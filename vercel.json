@@ -8,9 +8,7 @@
   ],
   "functions": {
     "api/index.py": {
-      "includeFiles": [
-        "Frontend/**"
-      ],
+      "includeFiles": "Frontend/**",
       "maxDuration": 60
     }
   }
