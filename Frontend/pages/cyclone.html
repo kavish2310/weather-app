@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather Intelligence | Cyclone Monitoring & Tracking</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;450;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+  <div class="app-wrapper">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">🌀</div>
+        <div class="sidebar-brand">WeatherIQ<small>Intelligence System</small></div>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">Main</div>
+        <div class="nav-item"><a href="../index.html" class="nav-link"><span class="nav-icon">📊</span><span>Overview Dashboard</span></a></div>
+        <div class="nav-item"><a href="weather.html" class="nav-link"><span class="nav-icon">🌤️</span><span>Live Weather</span></a></div>
+        <div class="nav-item"><a href="analytics.html" class="nav-link"><span class="nav-icon">📈</span><span>Weather Analytics</span></a></div>
+        <div class="nav-item"><a href="cyclone.html" class="nav-link active"><span class="nav-icon">🌀</span><span>Cyclone Monitoring</span></a></div>
+        <div class="nav-section-title">Analysis</div>
+        <div class="nav-item"><a href="risk.html" class="nav-link"><span class="nav-icon">⚠️</span><span>Disaster Risk</span></a></div>
+        <div class="nav-item"><a href="forecast.html" class="nav-link"><span class="nav-icon">🤖</span><span>Weather Forecasting</span></a></div>
+        <div class="nav-item"><a href="historical.html" class="nav-link"><span class="nav-icon">📜</span><span>Historical Data</span></a></div>
+        <div class="nav-section-title">System</div>
+        <div class="nav-item"><a href="alerts.html" class="nav-link"><span class="nav-icon">🔔</span><span>Alerts & Notifications</span></a></div>
+        <div class="nav-item"><a href="settings.html" class="nav-link"><span class="nav-icon">⚙️</span><span>Settings</span></a></div>
+      </nav>
+      <div class="sidebar-footer"><span>v2.0.0 &middot; Enterprise</span></div>
+    </aside>
+
+    <main class="main-content">
+      <header class="top-navbar">
+        <button class="hamburger-btn" id="hamburgerBtn" aria-label="Toggle sidebar">☰</button>
+        <div class="search-container">
+          <span class="search-icon">🔍</span>
+          <input type="text" class="search-input" id="searchInput" placeholder="Search city..." autocomplete="off">
+        </div>
+        <div class="navbar-actions">
+          <span class="last-updated" id="lastUpdated">Last updated: --</span>
+          <button class="navbar-btn" id="locationBtn" title="Use current location">📍</button>
+          <button class="navbar-btn" id="notificationBtn" title="Notifications">🔔<span class="notification-badge" id="notifBadge" style="display:none;">0</span></button>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <div class="page-header d-flex justify-between align-center flex-wrap gap-2">
+          <div>
+            <h1 class="page-title">Cyclone Monitoring & Geospatial Tracking</h1>
+            <p class="page-subtitle">Real-time tropical cyclone tracking via NOAA NHC, JTWC, and IMD authoritative bulletins</p>
+          </div>
+          <button class="btn btn-sm btn-primary" id="refreshCyclonesBtn">🔄 Refresh Telemetry</button>
+        </div>
+
+        <!-- Interactive Cyclone Map -->
+        <div class="card mb-4" style="padding:0; overflow:hidden;">
+          <div style="height: 520px; width:100%; position:relative;" id="cycloneTrackingMap"></div>
+        </div>
+
+        <div class="row g-4">
+          <!-- Active Cyclones List / Cards -->
+          <div class="col-lg-7">
+            <div class="card h-100">
+              <div class="card-header d-flex justify-between align-center">
+                <span class="card-title"><span class="card-icon">🌀</span> Active Cyclones & Tropical Disturbances</span>
+                <span class="badge bg-primary" id="cycloneCountBadge">Scanning...</span>
+              </div>
+              <div id="activeCyclonesContainer">
+                <div class="empty-state" style="padding:40px;">
+                  <div class="empty-state-icon">📡</div>
+                  <div class="empty-state-title">Querying Meteorological Feeds</div>
+                  <div class="empty-state-desc">Fetching official bulletins from NOAA NHC, JTWC, and IMD...</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Estimated Arrival & Coastal Exposure Calculator -->
+          <div class="col-lg-5">
+            <div class="card h-100">
+              <div class="card-header">
+                <span class="card-title"><span class="card-icon">⏱️</span> Coastal Arrival Window Estimator</span>
+              </div>
+              <div class="p-3">
+                <div class="alert alert-info py-2" style="font-size:12px; background:#eff6ff; border-color:#2563eb; color:#1e40af;">
+                  ⚠️ Landfall windows are approximate kinematic estimates based on forward velocity vectors. Never treat landfall time as guaranteed.
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label" style="font-size:13px; font-weight:600;">Select Monitored Disturbance</label>
+                  <select class="form-select form-select-sm" id="arrivalCycloneSelect">
+                    <option value="">No active cyclone selected</option>
+                  </select>
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label" style="font-size:13px; font-weight:600;">Target Coastal City</label>
+                  <select class="form-select form-select-sm" id="arrivalCitySelect">
+                    <option value="19.0760,72.8777,Mumbai">Mumbai (Maharashtra, India)</option>
+                    <option value="17.6868,83.2185,Visakhapatnam">Visakhapatnam (Andhra Pradesh, India)</option>
+                    <option value="13.0827,80.2707,Chennai">Chennai (Tamil Nadu, India)</option>
+                    <option value="20.2961,85.8245,Bhubaneswar">Bhubaneswar / Puri (Odisha, India)</option>
+                    <option value="22.5726,88.3639,Kolkata">Kolkata / Sundarbans (West Bengal, India)</option>
+                    <option value="21.1702,72.8311,Surat">Surat (Gujarat, India)</option>
+                  </select>
+                </div>
+
+                <button class="btn btn-sm btn-primary w-100 mb-3" id="calcArrivalBtn">Calculate Arrival Window</button>
+
+                <div id="arrivalResultsContainer" style="display:none;" class="p-3 rounded arrival-results">
+                  <h6 style="color:var(--color-accent); margin-bottom:8px;" id="arrivalResultTitle">Estimated Approach</h6>
+                  <div style="font-size:13px; line-height:1.8;">
+                    <div>Distance: <strong id="arrDistance">-- km</strong></div>
+                    <div>Movement Vector: <strong id="arrDirection">--</strong></div>
+                    <div>Forward Speed: <strong id="arrSpeed">-- km/h</strong></div>
+                    <div>Est. Window: <strong id="arrWindow" style="color:#b45309;">--</strong></div>
+                    <div style="font-size:11px; color:var(--color-text-muted); margin-top:8px;">Source: NOAA/IMD vector projection</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Official Bulletins & Warnings -->
+          <div class="col-12">
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title"><span class="card-icon">📢</span> Official Meteorological Bulletins & Advisories</span>
+              </div>
+              <div id="officialBulletinsList" class="p-3">
+                <div class="text-muted" style="font-size:13px;">No emergency gale or storm warnings currently issued for maritime zones.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/map.js"></script>
+  <script src="../js/cyclone.js"></script>
+</body>
+</html>

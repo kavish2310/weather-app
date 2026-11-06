@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Weather Intelligence & Cyclone Monitoring System - Enterprise Dashboard">
+  <title>Weather Intelligence | Dashboard</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;450;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Bootstrap 5.3 (CSS only) -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- Leaflet 1.9 -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="app-wrapper">
+    <!-- Sidebar Overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">🌀</div>
+        <div class="sidebar-brand">
+          WeatherIQ
+          <small>Intelligence System</small>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">Main</div>
+        <div class="nav-item">
+          <a href="index.html" class="nav-link active">
+            <span class="nav-icon">📊</span>
+            <span>Overview Dashboard</span>
+          </a>
+        </div>
+        <div class="nav-item">
+          <a href="pages/weather.html" class="nav-link">
+            <span class="nav-icon">🌤️</span>
+            <span>Live Weather</span>
+          </a>
+        </div>
+        <div class="nav-item">
+          <a href="pages/analytics.html" class="nav-link">
+            <span class="nav-icon">📈</span>
+            <span>Weather Analytics</span>
+          </a>
+        </div>
+        <div class="nav-item">
+          <a href="pages/cyclone.html" class="nav-link">
+            <span class="nav-icon">🌀</span>
+            <span>Cyclone Monitoring</span>
+          </a>
+        </div>
+
+        <div class="nav-section-title">Analysis</div>
+        <div class="nav-item">
+          <a href="pages/risk.html" class="nav-link">
+            <span class="nav-icon">⚠️</span>
+            <span>Disaster Risk</span>
+          </a>
+        </div>
+        <div class="nav-item">
+          <a href="pages/forecast.html" class="nav-link">
+            <span class="nav-icon">🤖</span>
+            <span>Weather Forecasting</span>
+          </a>
+        </div>
+        <div class="nav-item">
+          <a href="pages/historical.html" class="nav-link">
+            <span class="nav-icon">📜</span>
+            <span>Historical Data</span>
+          </a>
+        </div>
+
+        <div class="nav-section-title">System</div>
+        <div class="nav-item">
+          <a href="pages/alerts.html" class="nav-link">
+            <span class="nav-icon">🔔</span>
+            <span>Alerts & Notifications</span>
+          </a>
+        </div>
+        <div class="nav-item">
+          <a href="pages/settings.html" class="nav-link">
+            <span class="nav-icon">⚙️</span>
+            <span>Settings</span>
+          </a>
+        </div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <span>v2.0.0 &middot; Enterprise</span>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Top Navbar -->
+      <header class="top-navbar">
+        <button class="hamburger-btn" id="hamburgerBtn" aria-label="Toggle sidebar">☰</button>
+
+        <div class="search-container">
+          <span class="search-icon">🔍</span>
+          <input type="text" class="search-input" id="searchInput" placeholder="Search city..." autocomplete="off">
+        </div>
+
+        <div class="navbar-actions">
+          <span class="last-updated" id="lastUpdated">Last updated: --</span>
+          <button class="navbar-btn" id="locationBtn" title="Use current location">📍</button>
+          <button class="navbar-btn" id="notificationBtn" title="Notifications">
+            🔔
+            <span class="notification-badge" id="notifBadge" style="display:none;">0</span>
+          </button>
+          <button class="navbar-btn" id="themeToggle" title="Switch to dark theme" aria-label="Switch to dark theme">🌙</button>
+        </div>
+      </header>
+
+      <!-- Page Content -->
+      <div class="page-content">
+        <!-- Page Header -->
+        <div class="page-header">
+          <h1 class="page-title">Overview Dashboard</h1>
+          <p class="page-subtitle" id="dashboardCity">Loading weather data for your city...</p>
+        </div>
+
+        <!-- Current Weather Hero Card -->
+        <div class="card card-lg card-accent mb-4 animate-fade-in" id="currentWeatherCard">
+          <div class="weather-hero">
+            <div class="weather-icon-lg" id="weatherIconLg">--</div>
+            <div>
+              <div class="weather-temp" id="currentTemp">--°</div>
+              <div class="weather-condition" id="currentCondition">Loading...</div>
+              <div class="card-meta" id="feelsLike">Feels like --°</div>
+            </div>
+            <div style="margin-left:auto; text-align:right;">
+              <div class="card-meta" id="currentLocation">--</div>
+              <div class="card-meta" id="currentDateTime">--</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Weather Stats Grid -->
+        <div class="dashboard-grid" id="weatherGrid">
+          <!-- Temperature Card -->
+          <div class="card animate-slide-up">
+            <div class="card-header">
+              <span class="card-title"><span class="card-icon">🌡️</span> Temperature</span>
+            </div>
+            <div class="card-value" id="tempMinMax">--</div>
+            <div class="card-meta">Min / Max today</div>
+          </div>
+
+          <!-- Humidity Card -->
+          <div class="card animate-slide-up">
+            <div class="card-header">
+              <span class="card-title"><span class="card-icon">💧</span> Humidity</span>
+            </div>
+            <div class="card-value" id="humidity">--<span class="unit">%</span></div>
+            <div class="card-meta" id="humidityDesc">--</div>
+          </div>
+
+          <!-- Wind Card -->
+          <div class="card animate-slide-up">
+            <div class="card-header">
+              <span class="card-title"><span class="card-icon">💨</span> Wind</span>
+            </div>
+            <div class="card-value" id="windSpeed">--</div>
+            <div class="card-meta" id="windDir">Direction: --</div>
+          </div>
+
+          <!-- Pressure Card -->
+          <div class="card animate-slide-up">
+            <div class="card-header">
+              <span class="card-title"><span class="card-icon">📊</span> Pressure</span>
+            </div>
+            <div class="card-value" id="pressure">--<span class="unit"> hPa</span></div>
+            <div class="card-meta" id="pressureDesc">--</div>
+          </div>
+
+          <!-- Visibility Card -->
+          <div class="card animate-slide-up">
+            <div class="card-header">
+              <span class="card-title"><span class="card-icon">👁️</span> Visibility</span>
+            </div>
+            <div class="card-value" id="visibility">--<span class="unit"> km</span></div>
+            <div class="card-meta" id="visibilityDesc">--</div>
+          </div>
+
+          <!-- Sunrise/Sunset Card -->
+          <div class="card animate-slide-up">
+            <div class="card-header">
+              <span class="card-title"><span class="card-icon">🌅</span> Sunrise / Sunset</span>
+            </div>
+            <div class="d-flex justify-between align-center">
+              <div>
+                <div class="card-meta">Sunrise</div>
+                <div class="fw-600" id="sunrise">--</div>
+              </div>
+              <div style="text-align:right;">
+                <div class="card-meta">Sunset</div>
+                <div class="fw-600" id="sunset">--</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- UV Index Card -->
+          <div class="card animate-slide-up">
+            <div class="card-header">
+              <span class="card-title"><span class="card-icon">☀️</span> UV Index</span>
+            </div>
+            <div class="card-value" id="uvIndex">--</div>
+            <div class="card-meta" id="uvDesc">--</div>
+          </div>
+
+          <!-- Air Quality Card -->
+          <div class="card animate-slide-up">
+            <div class="card-header">
+              <span class="card-title"><span class="card-icon">🏭</span> Air Quality</span>
+            </div>
+            <div class="card-value" id="aqiValue">--</div>
+            <div class="card-meta" id="aqiDesc">--</div>
+          </div>
+
+          <!-- Cloud Coverage Card -->
+          <div class="card animate-slide-up">
+            <div class="card-header">
+              <span class="card-title"><span class="card-icon">☁️</span> Cloud Coverage</span>
+            </div>
+            <div class="card-value" id="cloudCover">--<span class="unit">%</span></div>
+            <div class="card-meta" id="cloudDesc">--</div>
+          </div>
+
+          <!-- Rainfall Card -->
+          <div class="card animate-slide-up">
+            <div class="card-header">
+              <span class="card-title"><span class="card-icon">🌧️</span> Rainfall</span>
+            </div>
+            <div class="card-value" id="rainfall">--<span class="unit"> mm</span></div>
+            <div class="card-meta" id="rainfallDesc">Last 1 hour</div>
+          </div>
+
+          <!-- Alerts Summary Card -->
+          <div class="card animate-slide-up card-wide">
+            <div class="card-header">
+              <span class="card-title"><span class="card-icon">🚨</span> Weather Alerts</span>
+              <a href="pages/alerts.html" class="btn btn-sm btn-secondary">View All</a>
+            </div>
+            <div id="alertsSummary">
+              <div class="empty-state" style="padding:20px;">
+                <div class="empty-state-desc">No active weather alerts</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="chart-grid mt-4">
+          <!-- 24-Hour Temperature Chart -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title"><span class="card-icon">📈</span> 24-Hour Temperature</span>
+            </div>
+            <div class="chart-container">
+              <canvas id="tempChart24h"></canvas>
+            </div>
+            <p class="chart-data-status" id="hourlyChartStatus" role="status" aria-live="polite">Waiting for forecast data…</p>
+          </div>
+
+          <!-- 5-Day Forecast Chart -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title"><span class="card-icon">📅</span> 5-Day Forecast</span>
+            </div>
+            <div class="chart-container">
+              <canvas id="forecastChart5d"></canvas>
+            </div>
+            <p class="chart-data-status" id="forecastChartStatus" role="status" aria-live="polite">Waiting for forecast data…</p>
+          </div>
+        </div>
+
+        <section class="card mt-4" aria-labelledby="weatherFlowTitle">
+          <div class="card-header">
+            <span class="card-title" id="weatherFlowTitle"><span class="card-icon">🔄</span> Live Weather Data Flow</span>
+          </div>
+          <div class="weather-flow" aria-label="Weather data processing flow">
+            <div class="weather-flow-step" id="flowProvider">
+              <div class="weather-flow-title">1. Weather provider</div>
+              <div class="weather-flow-detail" id="flowProviderDetail">Waiting for live API response</div>
+            </div>
+            <div class="weather-flow-step" id="flowObservation">
+              <div class="weather-flow-title">2. Current conditions</div>
+              <div class="weather-flow-detail" id="flowObservationDetail">Temperature, humidity and wind will appear here</div>
+            </div>
+            <div class="weather-flow-step" id="flowForecast">
+              <div class="weather-flow-title">3. Forecast data</div>
+              <div class="weather-flow-detail" id="flowForecastDetail">Waiting for forecast data</div>
+            </div>
+            <div class="weather-flow-step" id="flowVisuals">
+              <div class="weather-flow-title">4. Dashboard visuals</div>
+              <div class="weather-flow-detail" id="flowVisualsDetail">Charts and map update when data arrives</div>
+            </div>
+          </div>
+          <p class="flowchart-caption">Live values from the selected city feed the forecast charts and map. No sample readings are used.</p>
+        </section>
+
+        <!-- Map Section -->
+        <div class="card mt-4">
+          <div class="card-header">
+            <span class="card-title"><span class="card-icon">🗺️</span> Weather Map</span>
+          </div>
+          <div class="map-container" id="dashboardMap"></div>
+        </div>
+
+        <!-- Bottom Row: Recent & Favorites -->
+        <div class="chart-grid mt-4">
+          <!-- Recently Searched Cities -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title"><span class="card-icon">🕐</span> Recently Searched</span>
+              <button class="btn btn-sm btn-secondary" id="clearHistoryBtn">Clear</button>
+            </div>
+            <div id="recentCities">
+              <div class="empty-state" style="padding:20px;">
+                <div class="empty-state-desc">No recent searches</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Favorite Cities -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title"><span class="card-icon">⭐</span> Favorite Cities</span>
+            </div>
+            <div id="favoriteCities">
+              <div class="empty-state" style="padding:20px;">
+                <div class="empty-state-desc">No favorites added yet</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="mt-5" style="text-align:center; padding:16px 0;">
+          <p class="text-muted" style="font-size:var(--font-size-xs);">
+            Weather Intelligence & Cyclone Monitoring System &middot; Data powered by Open-Meteo &middot;
+            <span id="footerRefresh">Last refresh: --</span>
+          </p>
+        </footer>
+      </div>
+    </main>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/dashboard.js"></script>
+</body>
+</html>

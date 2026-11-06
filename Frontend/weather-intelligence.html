@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Live weather conditions, trends, alerts and cyclone monitoring.">
+  <title>Weather Intelligence | Live Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="css/weather-intelligence.css">
+</head>
+<body>
+  <div class="wi-shell">
+    <aside class="wi-sidebar" aria-label="Primary navigation">
+      <a class="wi-brand" href="weather-intelligence.html" aria-label="Weather Intelligence home">
+        <span class="wi-brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 40 40" focusable="false">
+            <path d="M7 12h16c5 0 5-7 0-7-2 0-3.5 1-4.2 2.8M4 20h25c7 0 7 9 0 9-2.7 0-4.4-1.3-5-3.4M8 28h7" />
+            <path d="M20 14.5c4.7.3 7.5 2.7 7.5 5.7 0 3.2-3.1 5.3-6.7 5.3-4.6 0-7.5-2.8-7.5-6.2 0-3.8 3.8-6.7 8.2-6.7" />
+          </svg>
+        </span>
+        <span>Weather<span class="wi-brand-light">Intelligence</span></span>
+      </a>
+      <span class="wi-nav-label">WORKSPACE</span>
+      <nav class="wi-nav">
+        <a class="wi-nav-link is-active" href="weather-intelligence.html"><i class="bi bi-house-door" aria-hidden="true"></i><span>Home</span></a>
+        <a class="wi-nav-link" href="pages/analytics.html"><i class="bi bi-bar-chart-line" aria-hidden="true"></i><span>Analytics</span></a>
+        <a class="wi-nav-link" href="#wi-map"><i class="bi bi-map" aria-hidden="true"></i><span>Maps</span></a>
+        <a class="wi-nav-link" href="pages/settings.html"><i class="bi bi-sliders" aria-hidden="true"></i><span>Settings</span></a>
+      </nav>
+      <div class="wi-sidebar-bottom">
+        <div class="wi-sidebar-note"><i class="bi bi-cloud-check" aria-hidden="true"></i><span><strong>Live weather data</strong><small>Open-Meteo services</small></span></div>
+        <a class="wi-old-dashboard" href="index.html"><i class="bi bi-arrow-up-right" aria-hidden="true"></i> Classic dashboard</a>
+      </div>
+    </aside>
+
+    <main class="wi-main">
+      <header class="wi-topbar">
+        <form class="wi-search" id="wiSearchForm" role="search">
+          <i class="bi bi-search" aria-hidden="true"></i>
+          <input id="wiCitySearch" type="search" placeholder="Search any city..." aria-label="Search a city" autocomplete="off">
+          <kbd>Enter</kbd>
+        </form>
+        <div class="wi-top-actions">
+          <span class="wi-updated" id="wiUpdated">Updating weather…</span>
+          <button class="wi-icon-button wi-notifications" id="wiNotificationButton" aria-label="Open alerts">
+            <i class="bi bi-bell" aria-hidden="true"></i><span id="wiNotificationCount" class="wi-notification-count" hidden>0</span>
+          </button>
+          <div class="wi-avatar" aria-label="Weather Intelligence">WI</div>
+        </div>
+      </header>
+
+      <div class="wi-content">
+        <section class="wi-page-heading">
+          <div>
+            <div class="wi-eyebrow"><span class="wi-live-dot"></span> LIVE WEATHER OVERVIEW</div>
+            <h1>Weather Intelligence</h1>
+            <p id="wiLocationSubtitle">Conditions and insights for your selected city.</p>
+          </div>
+          <button class="wi-refresh-button" id="wiRefreshButton"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i><span>Refresh</span></button>
+        </section>
+
+        <section class="wi-top-grid" aria-label="Current weather and alerts">
+          <article class="wi-card wi-current-card">
+            <div class="wi-current-top">
+              <div>
+                <span class="wi-section-kicker">CURRENT CONDITIONS</span>
+                <h2 id="wiCurrentCity">Loading weather…</h2>
+                <p id="wiCurrentDate" class="wi-muted">Waiting for live conditions</p>
+              </div>
+              <div id="wiWeatherIcon" class="wi-weather-icon" aria-hidden="true"><i class="bi bi-cloud-sun"></i></div>
+            </div>
+            <div class="wi-temperature-row">
+              <div class="wi-temperature"><span id="wiTemperature">--</span><sup>°C</sup></div>
+              <div class="wi-condition">
+                <strong id="wiCondition">Loading…</strong>
+                <span id="wiFeelsLike">Feels like --°</span>
+              </div>
+            </div>
+            <div class="wi-current-divider"></div>
+            <div class="wi-weather-metrics">
+              <div class="wi-weather-metric"><span class="wi-metric-icon wi-wind"><i class="bi bi-wind"></i></span><span><small>Wind</small><strong id="wiWind">--</strong></span></div>
+              <div class="wi-weather-metric"><span class="wi-metric-icon wi-humidity"><i class="bi bi-droplet"></i></span><span><small>Humidity</small><strong id="wiHumidity">--</strong></span></div>
+              <div class="wi-weather-metric"><span class="wi-metric-icon wi-pressure"><i class="bi bi-speedometer2"></i></span><span><small>Pressure</small><strong id="wiPressure">--</strong></span></div>
+              <div class="wi-weather-metric"><span class="wi-metric-icon wi-sunrise"><i class="bi bi-sunrise"></i></span><span><small>Sunrise / Sunset</small><strong id="wiSunTimes">-- / --</strong></span></div>
+            </div>
+            <div class="wi-source-line"><i class="bi bi-database-check" aria-hidden="true"></i><span id="wiWeatherSource">Weather data is loading</span></div>
+          </article>
+
+          <article class="wi-card wi-alert-card">
+            <div class="wi-card-heading">
+              <div><span class="wi-section-kicker">WEATHER NOTIFICATIONS</span><h2>Severe alerts</h2></div>
+              <a class="wi-text-link" href="pages/alerts.html">View all <i class="bi bi-arrow-up-right"></i></a>
+            </div>
+            <div id="wiAlertList" class="wi-alert-list" aria-live="polite">
+              <div class="wi-empty-state"><span class="wi-loading-ring"></span><span>Checking alert feed…</span></div>
+            </div>
+            <div class="wi-alert-foot"><i class="bi bi-info-circle"></i> Always follow official local emergency guidance.</div>
+          </article>
+        </section>
+
+        <section class="wi-middle-grid" aria-label="Temperature trends and analytics">
+          <article class="wi-card wi-chart-card">
+            <div class="wi-card-heading">
+              <div><span class="wi-section-kicker">TEMPERATURE OUTLOOK</span><h2>Historical trends</h2></div>
+              <span class="wi-chart-badge"><span></span> Actual &amp; forecast</span>
+            </div>
+            <div class="wi-chart-wrap"><canvas id="wiTemperatureChart" aria-label="Historical and forecast temperatures"></canvas></div>
+            <p class="wi-chart-caption" id="wiChartCaption">Loading archived observations and forecast data…</p>
+          </article>
+          <article class="wi-card wi-analytics-card">
+            <div class="wi-card-heading">
+              <div><span class="wi-section-kicker">AT A GLANCE</span><h2>Analytics summary</h2></div>
+              <a class="wi-round-link" href="pages/analytics.html" aria-label="Open analytics"><i class="bi bi-arrow-up-right"></i></a>
+            </div>
+            <div class="wi-range-panel">
+              <div><span>Today's range</span><small>Minimum / maximum</small></div>
+              <strong id="wiDailyRange">--° <i class="bi bi-arrow-right"></i> --°</strong>
+            </div>
+            <div class="wi-summary-list">
+              <div class="wi-summary-row"><span><i class="bi bi-cloud-rain"></i> Precipitation</span><strong id="wiPrecipitation">--</strong></div>
+              <div class="wi-summary-row"><span><i class="bi bi-cloud"></i> Cloud cover</span><strong id="wiCloudCover">--</strong></div>
+              <div class="wi-summary-row"><span><i class="bi bi-exclamation-triangle"></i> Active alerts</span><strong id="wiAlertSummary">--</strong></div>
+              <div class="wi-summary-row"><span><i class="bi bi-activity"></i> Active cyclones</span><strong id="wiCycloneSummary">--</strong></div>
+            </div>
+            <div class="wi-analytics-foot"><i class="bi bi-shield-check"></i> Values shown only when returned by the live data feeds.</div>
+          </article>
+        </section>
+
+        <section class="wi-map-grid" aria-label="Weather and cyclone maps">
+          <article class="wi-card wi-map-card" id="wi-map">
+            <div class="wi-card-heading wi-map-heading">
+              <div><span class="wi-section-kicker">LIVE CONDITIONS MAP</span><h2>Weather map</h2></div>
+              <div class="wi-map-controls">
+                <button class="wi-layer-button" id="wiCloudToggle" aria-pressed="false"><i class="bi bi-cloud"></i> Cloud cover</button>
+                <button class="wi-layer-button" id="wiRadarToggle" aria-pressed="false"><i class="bi bi-moisture"></i> Radar</button>
+              </div>
+            </div>
+            <div class="wi-map-wrap"><div id="wiMainMap" class="wi-map" aria-label="Interactive weather map"></div>
+              <div class="wi-zoom-controls"><button id="wiZoomIn" aria-label="Zoom in"><i class="bi bi-plus-lg"></i></button><button id="wiZoomOut" aria-label="Zoom out"><i class="bi bi-dash-lg"></i></button></div>
+              <div class="wi-map-attribution-note" id="wiMapStatus">Map layers load from their live providers.</div>
+            </div>
+          </article>
+          <article class="wi-card wi-cyclone-card">
+            <div class="wi-card-heading">
+              <div><span class="wi-section-kicker">TROPICAL SYSTEMS</span><h2>Cyclone tracking</h2></div>
+              <a class="wi-round-link" href="pages/cyclone.html" aria-label="Open cyclone monitoring"><i class="bi bi-arrow-up-right"></i></a>
+            </div>
+            <div class="wi-mini-map-wrap"><div id="wiCycloneMap" class="wi-mini-map" aria-label="Regional cyclone map"></div><div class="wi-mini-map-tag"><span class="wi-live-dot"></span> LIVE FEED</div></div>
+            <div id="wiCycloneDetails" class="wi-cyclone-details"><span class="wi-loading-ring"></span> Checking official cyclone feeds…</div>
+          </article>
+        </section>
+
+        <footer class="wi-footer"><span>Weather Intelligence</span><span id="wiFooterSource">Live sources are identified with each data panel.</span></footer>
+      </div>
+    </main>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/weather-intelligence.js"></script>
+</body>
+</html>

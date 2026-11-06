@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather Intelligence | Disaster Risk Assessment</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;450;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+  <div class="app-wrapper">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">🌀</div>
+        <div class="sidebar-brand">WeatherIQ<small>Intelligence System</small></div>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">Main</div>
+        <div class="nav-item"><a href="../index.html" class="nav-link"><span class="nav-icon">📊</span><span>Overview Dashboard</span></a></div>
+        <div class="nav-item"><a href="weather.html" class="nav-link"><span class="nav-icon">🌤️</span><span>Live Weather</span></a></div>
+        <div class="nav-item"><a href="analytics.html" class="nav-link"><span class="nav-icon">📈</span><span>Weather Analytics</span></a></div>
+        <div class="nav-item"><a href="cyclone.html" class="nav-link"><span class="nav-icon">🌀</span><span>Cyclone Monitoring</span></a></div>
+        <div class="nav-section-title">Analysis</div>
+        <div class="nav-item"><a href="risk.html" class="nav-link active"><span class="nav-icon">⚠️</span><span>Disaster Risk</span></a></div>
+        <div class="nav-item"><a href="forecast.html" class="nav-link"><span class="nav-icon">🤖</span><span>Weather Forecasting</span></a></div>
+        <div class="nav-item"><a href="historical.html" class="nav-link"><span class="nav-icon">📜</span><span>Historical Data</span></a></div>
+        <div class="nav-section-title">System</div>
+        <div class="nav-item"><a href="alerts.html" class="nav-link"><span class="nav-icon">🔔</span><span>Alerts & Notifications</span></a></div>
+        <div class="nav-item"><a href="settings.html" class="nav-link"><span class="nav-icon">⚙️</span><span>Settings</span></a></div>
+      </nav>
+      <div class="sidebar-footer"><span>v2.0.0 &middot; Enterprise</span></div>
+    </aside>
+
+    <main class="main-content">
+      <header class="top-navbar">
+        <button class="hamburger-btn" id="hamburgerBtn" aria-label="Toggle sidebar">☰</button>
+        <div class="search-container">
+          <span class="search-icon">🔍</span>
+          <input type="text" class="search-input" id="searchInput" placeholder="Search city..." autocomplete="off">
+        </div>
+        <div class="navbar-actions">
+          <span class="last-updated" id="lastUpdated">Last updated: --</span>
+          <button class="navbar-btn" id="locationBtn" title="Use current location">📍</button>
+          <button class="navbar-btn" id="notificationBtn" title="Notifications">🔔<span class="notification-badge" id="notifBadge" style="display:none;">0</span></button>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <div class="page-header d-flex justify-between align-center flex-wrap gap-2">
+          <div>
+            <h1 class="page-title">Disaster Risk & Multi-Hazard Assessment</h1>
+            <p class="page-subtitle" id="riskCityHeader">Assessing environmental vulnerability and vulnerability indices</p>
+          </div>
+          <div class="d-flex gap-2">
+            <input type="text" id="riskCityInput" class="form-control form-control-sm" placeholder="Enter city name..." style="max-width:200px;">
+            <button class="btn btn-sm btn-primary" id="runRiskAssessmentBtn">Assess City</button>
+          </div>
+        </div>
+
+        <!-- Overall Risk Summary -->
+        <div class="row g-4 mb-4">
+          <div class="col-lg-4">
+            <div class="card h-100 text-center d-flex flex-column justify-content-center align-items-center p-4">
+              <span class="card-meta" style="font-weight:600; text-transform:uppercase; letter-spacing:1px;">Composite Risk Index</span>
+              <div style="font-size: 5rem; font-weight: 800; line-height: 1.1; margin: 12px 0;" id="riskScore">--</div>
+              <span class="badge" id="riskLevelBadge" style="font-size: 14px; padding: 6px 16px;">Analyzing...</span>
+              <div class="text-muted mt-3" style="font-size: 12px;">Scale: 0 (Calm) to 100 (Extreme Hazard)</div>
+            </div>
+          </div>
+
+          <div class="col-lg-8">
+            <div class="card h-100">
+              <div class="card-header">
+                <span class="card-title"><span class="card-icon">📊</span> Multi-Vector Threat Breakdown</span>
+              </div>
+              <div class="p-3">
+                <!-- Wind Risk Bar -->
+                <div class="mb-3">
+                  <div class="d-flex justify-between mb-1" style="font-size:13px;">
+                    <span>💨 Wind Hazard Score</span>
+                    <strong id="windRiskVal">-- / 100</strong>
+                  </div>
+                  <div class="progress" style="height:8px; background:#e5e7eb;">
+                    <div class="progress-bar bg-info" id="windRiskBar" style="width:0%;"></div>
+                  </div>
+                </div>
+
+                <!-- Rain Risk Bar -->
+                <div class="mb-3">
+                  <div class="d-flex justify-between mb-1" style="font-size:13px;">
+                    <span>🌧️ Precipitation Intensity Score</span>
+                    <strong id="rainRiskVal">-- / 100</strong>
+                  </div>
+                  <div class="progress" style="height:8px; background:#e5e7eb;">
+                    <div class="progress-bar bg-primary" id="rainRiskBar" style="width:0%;"></div>
+                  </div>
+                </div>
+
+                <!-- Flood Risk Bar -->
+                <div class="mb-3">
+                  <div class="d-flex justify-between mb-1" style="font-size:13px;">
+                    <span>🌊 Pluvial / Flood Vulnerability Score</span>
+                    <strong id="floodRiskVal">-- / 100</strong>
+                  </div>
+                  <div class="progress" style="height:8px; background:#e5e7eb;">
+                    <div class="progress-bar bg-warning" id="floodRiskBar" style="width:0%;"></div>
+                  </div>
+                </div>
+
+                <!-- Storm Surge Risk Bar -->
+                <div class="mb-1">
+                  <div class="d-flex justify-between mb-1" style="font-size:13px;">
+                    <span>⚓ Coastal Storm Surge Index</span>
+                    <strong id="surgeRiskVal">-- / 100</strong>
+                  </div>
+                  <div class="progress" style="height:8px; background:#e5e7eb;">
+                    <div class="progress-bar bg-danger" id="surgeRiskBar" style="width:0%;"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-4">
+          <!-- Scientific Rigor & Damage Statement -->
+          <div class="col-lg-6">
+            <div class="card h-100">
+              <div class="card-header">
+                <span class="card-title"><span class="card-icon">🔬</span> Scientific Damage & Exposure Validation</span>
+              </div>
+              <div class="p-3">
+                <div class="alert alert-secondary mb-3" style="font-size:13px; line-height:1.6; background:#f8fafc; border-color:#dbe2ea;">
+                  <strong>Physical Damage Estimation:</strong><br>
+                  <span id="physicalDamageStatus" style="color:#92400e; font-weight:600;">
+                    Damage percentage unavailable — insufficient validated data.
+                  </span>
+                </div>
+                <div style="font-size:12px; color:var(--color-text-muted); line-height:1.7;">
+                  <strong>Scientific Methodology Note:</strong><br>
+                  In accordance with World Meteorological Organization (WMO) and National Disaster Management Authority (NDMA) standards, structural damage percentages cannot be fabricated without building-inventory micro-surveys, lidar elevation models, and calibrated hydrodynamic flood models.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Precautionary Actions -->
+          <div class="col-lg-6">
+            <div class="card h-100">
+              <div class="card-header">
+                <span class="card-title"><span class="card-icon">🛡️</span> Recommended Precautionary Measures</span>
+              </div>
+              <div class="p-3" id="recommendationsList">
+                <div class="text-muted" style="font-size:13px;">Loading safety measures...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Contributing Factors -->
+          <div class="col-12">
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title"><span class="card-icon">📋</span> Contributing Environmental Factors & Exposed Basins</span>
+              </div>
+              <div class="p-3" id="contributingFactorsList">
+                <div class="text-muted" style="font-size:13px;">Analyzing atmospheric telemetry...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="../js/app.js"></script>
+  <script src="../js/risk.js"></script>
+</body>
+</html>

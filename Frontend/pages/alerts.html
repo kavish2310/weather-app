@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather Intelligence | Alerts & Early Warning Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;450;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+  <div class="app-wrapper">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">🌀</div>
+        <div class="sidebar-brand">WeatherIQ<small>Intelligence System</small></div>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">Main</div>
+        <div class="nav-item"><a href="../index.html" class="nav-link"><span class="nav-icon">📊</span><span>Overview Dashboard</span></a></div>
+        <div class="nav-item"><a href="weather.html" class="nav-link"><span class="nav-icon">🌤️</span><span>Live Weather</span></a></div>
+        <div class="nav-item"><a href="analytics.html" class="nav-link"><span class="nav-icon">📈</span><span>Weather Analytics</span></a></div>
+        <div class="nav-item"><a href="cyclone.html" class="nav-link"><span class="nav-icon">🌀</span><span>Cyclone Monitoring</span></a></div>
+        <div class="nav-section-title">Analysis</div>
+        <div class="nav-item"><a href="risk.html" class="nav-link"><span class="nav-icon">⚠️</span><span>Disaster Risk</span></a></div>
+        <div class="nav-item"><a href="forecast.html" class="nav-link"><span class="nav-icon">🤖</span><span>Weather Forecasting</span></a></div>
+        <div class="nav-item"><a href="historical.html" class="nav-link"><span class="nav-icon">📜</span><span>Historical Data</span></a></div>
+        <div class="nav-section-title">System</div>
+        <div class="nav-item"><a href="alerts.html" class="nav-link active"><span class="nav-icon">🔔</span><span>Alerts & Notifications</span></a></div>
+        <div class="nav-item"><a href="settings.html" class="nav-link"><span class="nav-icon">⚙️</span><span>Settings</span></a></div>
+      </nav>
+      <div class="sidebar-footer"><span>v2.0.0 &middot; Enterprise</span></div>
+    </aside>
+
+    <main class="main-content">
+      <header class="top-navbar">
+        <button class="hamburger-btn" id="hamburgerBtn" aria-label="Toggle sidebar">☰</button>
+        <div class="search-container">
+          <span class="search-icon">🔍</span>
+          <input type="text" class="search-input" id="searchInput" placeholder="Search city..." autocomplete="off">
+        </div>
+        <div class="navbar-actions">
+          <span class="last-updated" id="lastUpdated">Last updated: --</span>
+          <button class="navbar-btn" id="locationBtn" title="Use current location">📍</button>
+          <button class="navbar-btn" id="notificationBtn" title="Notifications">🔔<span class="notification-badge" id="notifBadge" style="display:none;">0</span></button>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <div class="page-header d-flex justify-between align-center flex-wrap gap-2">
+          <div>
+            <h1 class="page-title">Early Warning & Notification Dispatch</h1>
+            <p class="page-subtitle">Real-time severe atmospheric threshold warnings and official meteorological alerts</p>
+          </div>
+          <div class="d-flex gap-2">
+            <select class="form-select form-select-sm" id="alertSeverityFilter" style="max-width:140px;">
+              <option value="all">All Severities</option>
+              <option value="critical">Critical Only</option>
+              <option value="warning">Warning Level</option>
+              <option value="info">Advisory / Info</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Notification Feed -->
+        <div class="card mb-4">
+          <div class="card-header d-flex justify-between align-center">
+            <span class="card-title"><span class="card-icon">🔔</span> Active Severe Weather Warnings</span>
+            <span class="badge bg-primary" id="alertsCount">0 Active</span>
+          </div>
+          <div id="alertsFeedContainer" class="p-3">
+            <div class="text-center py-4 text-muted">Checking meteorological threshold warnings...</div>
+          </div>
+        </div>
+
+        <!-- Architectural Dispatch Integration Note -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><span class="card-icon">📡</span> Notification Dispatch Architecture</span>
+          </div>
+          <div class="p-3 alert-architecture-note">
+            <p><strong>Alert service:</strong> Active alerts are read from the application API (<code>GET /api/alerts</code>, <code>POST /api/alerts/read/&lt;id&gt;</code>). No demonstration alerts are shown when the feed is empty.</p>
+            <p><strong>Threshold automation:</strong> Alerts are generated only when configured weather thresholds are met by available telemetry.</p>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="../js/app.js"></script>
+  <script src="../js/alerts.js"></script>
+</body>
+</html>

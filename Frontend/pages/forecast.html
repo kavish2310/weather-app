@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather Intelligence | ML Forecasting & Analytics</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;450;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+  <div class="app-wrapper">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">🌀</div>
+        <div class="sidebar-brand">WeatherIQ<small>Intelligence System</small></div>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">Main</div>
+        <div class="nav-item"><a href="../index.html" class="nav-link"><span class="nav-icon">📊</span><span>Overview Dashboard</span></a></div>
+        <div class="nav-item"><a href="weather.html" class="nav-link"><span class="nav-icon">🌤️</span><span>Live Weather</span></a></div>
+        <div class="nav-item"><a href="analytics.html" class="nav-link"><span class="nav-icon">📈</span><span>Weather Analytics</span></a></div>
+        <div class="nav-item"><a href="cyclone.html" class="nav-link"><span class="nav-icon">🌀</span><span>Cyclone Monitoring</span></a></div>
+        <div class="nav-section-title">Analysis</div>
+        <div class="nav-item"><a href="risk.html" class="nav-link"><span class="nav-icon">⚠️</span><span>Disaster Risk</span></a></div>
+        <div class="nav-item"><a href="forecast.html" class="nav-link active"><span class="nav-icon">🤖</span><span>Weather Forecasting</span></a></div>
+        <div class="nav-item"><a href="historical.html" class="nav-link"><span class="nav-icon">📜</span><span>Historical Data</span></a></div>
+        <div class="nav-section-title">System</div>
+        <div class="nav-item"><a href="alerts.html" class="nav-link"><span class="nav-icon">🔔</span><span>Alerts & Notifications</span></a></div>
+        <div class="nav-item"><a href="settings.html" class="nav-link"><span class="nav-icon">⚙️</span><span>Settings</span></a></div>
+      </nav>
+      <div class="sidebar-footer"><span>v2.0.0 &middot; Enterprise</span></div>
+    </aside>
+
+    <main class="main-content">
+      <header class="top-navbar">
+        <button class="hamburger-btn" id="hamburgerBtn" aria-label="Toggle sidebar">☰</button>
+        <div class="search-container">
+          <span class="search-icon">🔍</span>
+          <input type="text" class="search-input" id="searchInput" placeholder="Search city..." autocomplete="off">
+        </div>
+        <div class="navbar-actions">
+          <span class="last-updated" id="lastUpdated">Last updated: --</span>
+          <button class="navbar-btn" id="locationBtn" title="Use current location">📍</button>
+          <button class="navbar-btn" id="notificationBtn" title="Notifications">🔔<span class="notification-badge" id="notifBadge" style="display:none;">0</span></button>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <div class="page-header d-flex justify-between align-center flex-wrap gap-2">
+          <div>
+            <h1 class="page-title">Machine Learning Forecasting & Anomaly Detection</h1>
+            <p class="page-subtitle" id="mlCityHeader">Supervised statistical regression and unsupervised isolation forest modeling</p>
+          </div>
+          <div class="btn-group" role="group">
+            <button class="btn btn-sm btn-outline-primary ml-model-btn active" data-model="temperature">Temperature Forecaster</button>
+            <button class="btn btn-sm btn-outline-primary ml-model-btn" data-model="anomalies">Anomaly Detector</button>
+          </div>
+        </div>
+
+        <!-- Insufficient Data Alert / Notice -->
+        <div id="mlDataNotice" class="alert alert-warning mb-4" style="background:#fff7ed; border-color:#f59e0b; color:#92400e;">
+          <div style="font-weight:600; margin-bottom:4px;">Statistical Data Sufficiency Status:</div>
+          <div id="mlNoticeMessage">Validating database observations against minimum training thresholds (50 observations)...</div>
+        </div>
+
+        <!-- Evaluation Metrics Panel -->
+        <div class="row g-4 mb-4" id="mlMetricsRow">
+          <div class="col-md-4">
+            <div class="card p-3 text-center">
+              <span class="card-meta">Mean Absolute Error (MAE)</span>
+              <div style="font-size:2rem; font-weight:700; color:#1d4ed8;" id="metricMAE">--</div>
+              <span style="font-size:11px; color:var(--color-text-muted);">Average absolute magnitude of errors</span>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="card p-3 text-center">
+              <span class="card-meta">Root Mean Squared Error (RMSE)</span>
+              <div style="font-size:2rem; font-weight:700; color:#0369a1;" id="metricRMSE">--</div>
+              <span style="font-size:11px; color:var(--color-text-muted);">Penalizes large variance deviations</span>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="card p-3 text-center">
+              <span class="card-meta">Coefficient of Determination (R²)</span>
+              <div style="font-size:2rem; font-weight:700; color:#047857;" id="metricR2">--</div>
+              <span style="font-size:11px; color:var(--color-text-muted);">Chronological test split variance explained</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Forecast Chart -->
+        <div class="card mb-4">
+          <div class="card-header">
+            <span class="card-title" id="mlChartTitle"><span class="card-icon">📈</span> Predicted vs Observed Trajectory</span>
+          </div>
+          <div style="height:340px; position:relative;">
+            <canvas id="mlForecastChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Feature Engineering & Architecture Documentation -->
+        <div class="row g-4">
+          <div class="col-lg-6">
+            <div class="card h-100">
+              <div class="card-header">
+                <span class="card-title"><span class="card-icon">🧠</span> Feature Engineering Pipeline</span>
+              </div>
+              <div class="p-3" style="font-size:13px; line-height:1.7; color:var(--color-text-muted);">
+                <p><strong style="color:var(--color-text-primary);">Feature Vector:</strong> [Hour of Day, Day of Year, Month, Lagged Humidity, Atmospheric Pressure, Wind Speed, Cloud Cover Fraction]</p>
+                <p><strong style="color:var(--color-text-primary);">Normalization:</strong> Scikit-learn StandardScaler fitted strictly on chronological training splits to prevent look-ahead bias.</p>
+                <p><strong style="color:var(--color-text-primary);">Split Strategy:</strong> Non-shuffled 80% chronological train / 20% validation split respecting temporal autocorrelation.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-lg-6">
+            <div class="card h-100">
+              <div class="card-header">
+                <span class="card-title"><span class="card-icon">🛡️</span> Scientific Integrity Principles</span>
+              </div>
+              <div class="p-3" style="font-size:13px; line-height:1.7; color:var(--color-text-muted);">
+                <p>• Zero synthetic or randomized weights: Models refuse training until 50+ real observations are collected in the database.</p>
+                <p>• Outlier Isolation: Isolation Forest isolates multivariate atmospheric extremes (pressure anomalies, microbursts) with contamination &alpha; = 0.05.</p>
+                <p>• Transparent metrics: No claims of 100% predictive accuracy are ever rendered.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/charts.js"></script>
+  <script src="../js/forecast.js"></script>
+</body>
+</html>

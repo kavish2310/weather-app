@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather Intelligence | Live Weather</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;450;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+  <div class="app-wrapper">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">🌀</div>
+        <div class="sidebar-brand">WeatherIQ<small>Intelligence System</small></div>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">Main</div>
+        <div class="nav-item"><a href="../index.html" class="nav-link"><span class="nav-icon">📊</span><span>Overview Dashboard</span></a></div>
+        <div class="nav-item"><a href="weather.html" class="nav-link active"><span class="nav-icon">🌤️</span><span>Live Weather</span></a></div>
+        <div class="nav-item"><a href="analytics.html" class="nav-link"><span class="nav-icon">📈</span><span>Weather Analytics</span></a></div>
+        <div class="nav-item"><a href="cyclone.html" class="nav-link"><span class="nav-icon">🌀</span><span>Cyclone Monitoring</span></a></div>
+        <div class="nav-section-title">Analysis</div>
+        <div class="nav-item"><a href="risk.html" class="nav-link"><span class="nav-icon">⚠️</span><span>Disaster Risk</span></a></div>
+        <div class="nav-item"><a href="forecast.html" class="nav-link"><span class="nav-icon">🤖</span><span>Weather Forecasting</span></a></div>
+        <div class="nav-item"><a href="historical.html" class="nav-link"><span class="nav-icon">📜</span><span>Historical Data</span></a></div>
+        <div class="nav-section-title">System</div>
+        <div class="nav-item"><a href="alerts.html" class="nav-link"><span class="nav-icon">🔔</span><span>Alerts & Notifications</span></a></div>
+        <div class="nav-item"><a href="settings.html" class="nav-link"><span class="nav-icon">⚙️</span><span>Settings</span></a></div>
+      </nav>
+      <div class="sidebar-footer"><span>v2.0.0 &middot; Enterprise</span></div>
+    </aside>
+
+    <main class="main-content">
+      <header class="top-navbar">
+        <button class="hamburger-btn" id="hamburgerBtn" aria-label="Toggle sidebar">☰</button>
+        <div class="search-container">
+          <span class="search-icon">🔍</span>
+          <input type="text" class="search-input" id="searchInput" placeholder="Search city..." autocomplete="off">
+        </div>
+        <div class="navbar-actions">
+          <span class="last-updated" id="lastUpdated">Last updated: --</span>
+          <button class="navbar-btn" id="locationBtn" title="Use current location">📍</button>
+          <button class="navbar-btn" id="notificationBtn" title="Notifications">🔔<span class="notification-badge" id="notifBadge" style="display:none;">0</span></button>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <div class="page-header">
+          <h1 class="page-title">Live Weather</h1>
+          <p class="page-subtitle" id="weatherPageCity">Detailed weather information</p>
+        </div>
+
+        <!-- Detailed Current Weather -->
+        <div class="card card-lg card-accent mb-4" id="detailedWeatherCard">
+          <div class="weather-hero" id="weatherHero">
+            <div class="weather-icon-lg" id="weatherIconLg">--</div>
+            <div>
+              <div class="weather-temp" id="currentTemp">--°</div>
+              <div class="weather-condition" id="currentCondition">Loading...</div>
+              <div class="card-meta" id="feelsLike">Feels like --°</div>
+            </div>
+          </div>
+          <div class="mt-4" id="weatherDetails">
+            <div class="weather-detail-row"><span class="weather-detail-label">Humidity</span><span class="weather-detail-value" id="detailHumidity">--</span></div>
+            <div class="weather-detail-row"><span class="weather-detail-label">Wind Speed</span><span class="weather-detail-value" id="detailWind">--</span></div>
+            <div class="weather-detail-row"><span class="weather-detail-label">Wind Direction</span><span class="weather-detail-value" id="detailWindDir">--</span></div>
+            <div class="weather-detail-row"><span class="weather-detail-label">Pressure</span><span class="weather-detail-value" id="detailPressure">--</span></div>
+            <div class="weather-detail-row"><span class="weather-detail-label">Visibility</span><span class="weather-detail-value" id="detailVisibility">--</span></div>
+            <div class="weather-detail-row"><span class="weather-detail-label">Cloud Cover</span><span class="weather-detail-value" id="detailClouds">--</span></div>
+            <div class="weather-detail-row"><span class="weather-detail-label">Sunrise</span><span class="weather-detail-value" id="detailSunrise">--</span></div>
+            <div class="weather-detail-row"><span class="weather-detail-label">Sunset</span><span class="weather-detail-value" id="detailSunset">--</span></div>
+            <div class="weather-detail-row"><span class="weather-detail-label">Dew Point</span><span class="weather-detail-value" id="detailDewPoint">--</span></div>
+            <div class="weather-detail-row"><span class="weather-detail-label">UV Index</span><span class="weather-detail-value" id="detailUV">--</span></div>
+          </div>
+        </div>
+
+        <!-- Hourly Forecast -->
+        <div class="card mb-4">
+          <div class="card-header">
+            <span class="card-title"><span class="card-icon">🕐</span> Hourly Forecast</span>
+          </div>
+          <div class="hourly-scroll" id="hourlyForecast">
+            <!-- Hourly cards rendered by JS -->
+          </div>
+        </div>
+
+        <!-- 5-Day Forecast -->
+        <div class="card mb-4">
+          <div class="card-header">
+            <span class="card-title"><span class="card-icon">📅</span> 5-Day Forecast</span>
+          </div>
+          <div id="dailyForecast">
+            <!-- Forecast rows rendered by JS -->
+          </div>
+        </div>
+
+        <!-- City Comparison -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><span class="card-icon">🔄</span> City Comparison</span>
+            <div class="d-flex gap-2">
+              <input type="text" class="form-control" id="comparisonCityInput" placeholder="Add city..." style="max-width:200px;height:34px;">
+              <button class="btn btn-sm btn-primary" id="addComparisonBtn">Add</button>
+            </div>
+          </div>
+          <div class="comparison-grid" id="comparisonGrid">
+            <div class="empty-state" style="padding:30px;grid-column:1/-1;">
+              <div class="empty-state-icon">🏙️</div>
+              <div class="empty-state-desc">Add cities to compare weather side by side</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/charts.js"></script>
+  <script src="../js/map.js"></script>
+  <script src="../js/weather.js"></script>
+</body>
+</html>
