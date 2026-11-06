@@ -4,6 +4,7 @@ Tests for Weather Intelligence & Cyclone Monitoring System
 import os
 import sys
 import json
+import tempfile
 import unittest
 from datetime import datetime, timedelta
 from unittest.mock import patch
@@ -64,6 +65,23 @@ class TestHealthEndpoint(unittest.TestCase):
         self.assertIn(b'Weather Intelligence', response.data)
         self.assertIn(b'wiTemperatureChart', response.data)
         response.close()
+
+    def test_vercel_without_postgres_uses_writable_temporary_database(self):
+        """Vercel must start without a configured Postgres URL."""
+        class VercelConfig(TestConfig):
+            SQLALCHEMY_DATABASE_URI = 'sqlite:///data/weather.db'
+
+        with patch.dict(os.environ, {'VERCEL': '1'}):
+            with patch('Backend.app.init_db'):
+                app = create_app(VercelConfig)
+
+        expected_path = os.path.join(
+            tempfile.gettempdir(), 'weather-intelligence.db'
+        ).replace('\\', '/')
+        self.assertEqual(
+            app.config['SQLALCHEMY_DATABASE_URI'],
+            f'sqlite:///{expected_path}'
+        )
 
 
 class TestWeatherEndpoints(unittest.TestCase):

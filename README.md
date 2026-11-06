@@ -258,7 +258,7 @@ The repository includes a Vercel Python function entry point and routing configu
    - `FLASK_DEBUG` — `False`
 5. Deploy. The project root and `/weather-intelligence.html` both serve the dashboard.
 
-Vercel's filesystem is ephemeral, so the local SQLite database is intentionally rejected in the Vercel environment. Persistent application records require the hosted PostgreSQL database. Never commit database credentials or secret keys.
+Vercel's filesystem is ephemeral. Without `DATABASE_URL`, the app uses a writable temporary SQLite database so the dashboard can start, but records are not persistent across serverless instances. Configure hosted PostgreSQL for persistent records. Never commit database credentials or secret keys.
 
 ---
 

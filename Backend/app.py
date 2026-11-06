@@ -5,6 +5,7 @@ Main Flask Application Factory for Weather Intelligence & Cyclone Monitoring Sys
 import os
 import sys
 import logging
+import tempfile
 from datetime import datetime, timezone
 from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
@@ -45,10 +46,21 @@ def create_app(config_class=Config):
     app = Flask(__name__, static_folder=frontend_dir, static_url_path='')
     app.config.from_object(config_class)
 
-    if os.environ.get('VERCEL') and app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite:'):
-        raise RuntimeError(
-            'Vercel requires a persistent PostgreSQL DATABASE_URL. '
-            'Configure one in the Vercel project environment variables.'
+    database_uri = app.config['SQLALCHEMY_DATABASE_URI']
+    if (
+        os.environ.get('VERCEL')
+        and database_uri.startswith('sqlite:')
+        and ':memory:' not in database_uri
+    ):
+        # Vercel's application directory is read-only and has no persistent disk.
+        # Use /tmp so the serverless function can start when Postgres is not configured.
+        ephemeral_db_path = os.path.join(
+            tempfile.gettempdir(), 'weather-intelligence.db'
+        ).replace('\\', '/')
+        app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{ephemeral_db_path}'
+        logger.warning(
+            'Vercel is using temporary SQLite storage. Set DATABASE_URL to PostgreSQL '
+            'to persist application data across serverless invocations.'
         )
 
     # Enable CORS for local API access
