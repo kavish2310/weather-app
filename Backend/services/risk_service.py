@@ -70,8 +70,8 @@ class RiskAssessmentService:
         flood_risk = self.calculate_flood_risk(rainfall, duration_hours=1) if rainfall is not None else None
         is_coastal = self._is_coastal_city(city)
         storm_surge_risk = (
-            self.calculate_storm_surge_risk(wind_speed_kmh, pressure, is_coastal)
-            if not is_coastal or (wind_speed_kmh is not None and pressure is not None)
+            self.calculate_storm_surge_risk(wind_speed_kmh, pressure, True)
+            if is_coastal and wind_speed_kmh is not None and pressure is not None
             else None
         )
 
@@ -84,6 +84,7 @@ class RiskAssessmentService:
 
         # Extra risk from nearby cyclone
         cyclone_proximity_risk = None
+        cyclone_distance_km = None
         if cyclone_data and cyclone_data.get('no_active_cyclones'):
             cyclone_proximity_risk = 0
             individual_risks['cyclone_proximity'] = cyclone_proximity_risk
@@ -97,6 +98,7 @@ class RiskAssessmentService:
                     cyclone_lat, cyclone_lon,
                     city_lat, city_lon,
                 )
+                cyclone_distance_km = round(dist, 1)
                 if dist < 100:
                     cyclone_proximity_risk = 95
                 elif dist < 300:
@@ -138,6 +140,7 @@ class RiskAssessmentService:
 
         return {
             'city': city,
+            'country': weather_data.get('country'),
             'overall_score': overall_score,
             'risk_level': risk_level,
             'individual_risks': individual_risks,
@@ -154,6 +157,20 @@ class RiskAssessmentService:
             },
             'data_source': source,
             'observed_at': weather_data.get('observed_at'),
+            'cyclone_details': (
+                {
+                    'name': cyclone_data.get('name'),
+                    'basin': cyclone_data.get('basin'),
+                    'source': cyclone_data.get('source'),
+                    'lat': cyclone_data.get('lat'),
+                    'lon': cyclone_data.get('lon'),
+                    'movement_dir': cyclone_data.get('movement_dir'),
+                    'movement_speed_kmh': cyclone_data.get('movement_speed'),
+                    'distance_km': cyclone_distance_km,
+                }
+                if cyclone_data and not cyclone_data.get('no_active_cyclones')
+                else None
+            ),
             'cyclone_feed_status': (
                 'available' if cyclone_data and cyclone_data.get('feed_checked')
                 else 'unavailable' if cyclone_data is None

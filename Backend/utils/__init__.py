@@ -199,7 +199,7 @@ def validate_city_name(name):
         return ValidationResult(False, 'City name must be at least 2 characters.')
     if len(sanitised) > 128:
         return ValidationResult(False, 'City name must be fewer than 128 characters.')
-    if not re.match(r"^[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF\s\-'.]+$", sanitised):
+    if not re.match(r"^[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF\s\-.',]+$", sanitised):
         return ValidationResult(False, 'City name contains invalid characters.')
     return ValidationResult(True, sanitised)
 

@@ -54,15 +54,17 @@
       <div class="page-content">
         <div class="page-header d-flex justify-between align-center flex-wrap gap-2">
           <div>
-            <h1 class="page-title">Cyclone Monitoring & Geospatial Tracking</h1>
-            <p class="page-subtitle">Real-time tropical cyclone tracking via NOAA NHC, JTWC, and IMD authoritative bulletins</p>
+            <h1 class="page-title">Live Cyclone & Ocean Tracking</h1>
+            <p class="page-subtitle">Live tropical-cyclone positions from official feeds, with a satellite sea view and clearly labeled reported-motion projections. Tornadoes are a separate hazard and are not represented as cyclones.</p>
           </div>
           <button class="btn btn-sm btn-primary" id="refreshCyclonesBtn">🔄 Refresh Telemetry</button>
         </div>
 
         <!-- Interactive Cyclone Map -->
         <div class="card mb-4" style="padding:0; overflow:hidden;">
-          <div style="height: 520px; width:100%; position:relative;" id="cycloneTrackingMap"></div>
+          <div style="height: 560px; width:100%; position:relative;" id="cycloneTrackingMap">
+            <div class="cyclone-map-status" id="cycloneMapStatus" role="status">Connecting to official cyclone feeds...</div>
+          </div>
         </div>
 
         <div class="row g-4">
@@ -91,7 +93,7 @@
               </div>
               <div class="p-3">
                 <div class="alert alert-info py-2" style="font-size:12px; background:#eff6ff; border-color:#2563eb; color:#1e40af;">
-                  ⚠️ Landfall windows are approximate kinematic estimates based on forward velocity vectors. Never treat landfall time as guaranteed.
+                  ⚠️ Any travel-time figure is a straight-line reference from reported movement only, not a forecast or landfall warning. Follow official advisories.
                 </div>
 
                 <div class="mb-3">
@@ -102,18 +104,11 @@
                 </div>
 
                 <div class="mb-3">
-                  <label class="form-label" style="font-size:13px; font-weight:600;">Target Coastal City</label>
-                  <select class="form-select form-select-sm" id="arrivalCitySelect">
-                    <option value="19.0760,72.8777,Mumbai">Mumbai (Maharashtra, India)</option>
-                    <option value="17.6868,83.2185,Visakhapatnam">Visakhapatnam (Andhra Pradesh, India)</option>
-                    <option value="13.0827,80.2707,Chennai">Chennai (Tamil Nadu, India)</option>
-                    <option value="20.2961,85.8245,Bhubaneswar">Bhubaneswar / Puri (Odisha, India)</option>
-                    <option value="22.5726,88.3639,Kolkata">Kolkata / Sundarbans (West Bengal, India)</option>
-                    <option value="21.1702,72.8311,Surat">Surat (Gujarat, India)</option>
-                  </select>
+                  <label class="form-label" for="arrivalCityInput" style="font-size:13px; font-weight:600;">Target city and country</label>
+                  <input class="form-control form-control-sm" id="arrivalCityInput" placeholder="For example: Mumbai, India" autocomplete="off">
                 </div>
 
-                <button class="btn btn-sm btn-primary w-100 mb-3" id="calcArrivalBtn">Calculate Arrival Window</button>
+                <button class="btn btn-sm btn-primary w-100 mb-3" id="calcArrivalBtn">Check Storm Proximity</button>
 
                 <div id="arrivalResultsContainer" style="display:none;" class="p-3 rounded arrival-results">
                   <h6 style="color:var(--color-accent); margin-bottom:8px;" id="arrivalResultTitle">Estimated Approach</h6>
@@ -121,22 +116,22 @@
                     <div>Distance: <strong id="arrDistance">-- km</strong></div>
                     <div>Movement Vector: <strong id="arrDirection">--</strong></div>
                     <div>Forward Speed: <strong id="arrSpeed">-- km/h</strong></div>
-                    <div>Est. Window: <strong id="arrWindow" style="color:#b45309;">--</strong></div>
-                    <div style="font-size:11px; color:var(--color-text-muted); margin-top:8px;">Source: NOAA/IMD vector projection</div>
+                    <div>Travel-time reference: <strong id="arrWindow" style="color:#b45309;">--</strong></div>
+                    <div style="font-size:11px; color:var(--color-text-muted); margin-top:8px;">Location source: Open-Meteo Geocoding · Storm source: official feed. Not an arrival forecast.</div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Official Bulletins & Warnings -->
+          <!-- Official Feed Status -->
           <div class="col-12">
             <div class="card">
               <div class="card-header">
-                <span class="card-title"><span class="card-icon">📢</span> Official Meteorological Bulletins & Advisories</span>
+                <span class="card-title"><span class="card-icon">📡</span> Official Cyclone Feed Status</span>
               </div>
               <div id="officialBulletinsList" class="p-3">
-                <div class="text-muted" style="font-size:13px;">No emergency gale or storm warnings currently issued for maritime zones.</div>
+                <div class="text-muted" style="font-size:13px;">Checking live source availability...</div>
               </div>
             </div>
           </div>

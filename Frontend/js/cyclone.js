@@ -3,94 +3,69 @@
  */
 
 let activeCyclonesList = [];
-let selectedTrackPoints = [];
-
-// Historical cyclone track dataset for evaluation & simulation
-const BENCHMARK_CYCLONES = [
-  {
-    id: 101,
-    name: 'AMPHAN',
-    identifier: 'BOB-01-2020',
-    category: 'Super Cyclonic Storm',
-    max_wind_speed: 260,
-    movement_dir: 'NNE',
-    movement_speed: 18,
-    lat: 18.5,
-    lon: 86.8,
-    basin: 'Bay of Bengal',
-    source: 'IMD Best Track Archive',
-    track: [
-      { lat: 10.5, lon: 86.5, timestamp: 'Day -3' },
-      { lat: 13.2, lon: 86.3, timestamp: 'Day -2' },
-      { lat: 16.0, lon: 86.5, timestamp: 'Day -1' },
-      { lat: 18.5, lon: 86.8, timestamp: 'Observed Eye' }
-    ],
-    forecast: [
-      { lat: 18.5, lon: 86.8 },
-      { lat: 20.8, lon: 87.8 },
-      { lat: 21.9, lon: 88.4 },
-      { lat: 23.5, lon: 89.2 }
-    ]
-  },
-  {
-    id: 102,
-    name: 'BIPARJOY',
-    identifier: 'ARB-01-2023',
-    category: 'Extremely Severe Cyclonic Storm',
-    max_wind_speed: 165,
-    movement_dir: 'NNE',
-    movement_speed: 12,
-    lat: 21.0,
-    lon: 66.8,
-    basin: 'Arabian Sea',
-    source: 'IMD Best Track Archive',
-    track: [
-      { lat: 13.0, lon: 66.2, timestamp: 'Day -3' },
-      { lat: 16.5, lon: 67.4, timestamp: 'Day -2' },
-      { lat: 19.0, lon: 67.0, timestamp: 'Day -1' },
-      { lat: 21.0, lon: 66.8, timestamp: 'Observed Eye' }
-    ],
-    forecast: [
-      { lat: 21.0, lon: 66.8 },
-      { lat: 22.4, lon: 68.1 },
-      { lat: 23.2, lon: 68.8 }
-    ]
-  }
-];
 
 async function loadCyclonePage() {
-  window.weatherMap.initMap('cycloneTrackingMap', [18.0, 80.0], 5);
+  if (!window.weatherMap.maps.cycloneTrackingMap) {
+    window.weatherMap.initMap('cycloneTrackingMap', [18.0, 80.0], 4);
+    window.weatherMap.addCycloneBasemaps('cycloneTrackingMap');
+  }
+  window.weatherMap.clearMap('cycloneTrackingMap');
 
   const container = document.getElementById('activeCyclonesContainer');
   const badge = document.getElementById('cycloneCountBadge');
   const select = document.getElementById('arrivalCycloneSelect');
+  const mapStatus = document.getElementById('cycloneMapStatus');
+  const updated = document.getElementById('lastUpdated');
+  const feedsContainer = document.getElementById('officialBulletinsList');
 
   try {
     const res = await window.weatherApp.fetchAPI('/cyclones/active');
-    activeCyclonesList = (res.cyclones || []).filter(c => c.name && c.lat && c.lon);
+    activeCyclonesList = (res.cyclones || []).filter(c =>
+      c.name && c.lat != null && c.lon != null &&
+      Number.isFinite(Number(c.lat)) && Number.isFinite(Number(c.lon))
+    );
+    if (mapStatus) {
+      const sourceNames = (res.sources_checked || []).join(', ') || 'No official feed responded';
+      const checkedAt = res.checked_at ? window.weatherApp.formatDateTime(res.checked_at) : 'time unavailable';
+      mapStatus.textContent = `LIVE OFFICIAL FEEDS · ${sourceNames} · checked ${checkedAt} · dashed paths are motion estimates, not official forecasts`;
+    }
+    if (updated && res.checked_at) updated.textContent = `Feed checked: ${window.weatherApp.formatDateTime(res.checked_at)}`;
+    renderFeedStatus(feedsContainer, res);
+    window.weatherMap.addCycloneBasemaps('cycloneTrackingMap');
 
     if (activeCyclonesList.length > 0) {
       if (badge) {
-        badge.textContent = `${activeCyclonesList.length} Active System(s)`;
+        badge.textContent = `${activeCyclonesList.length} Live System(s)`;
         badge.className = 'badge bg-danger';
       }
       renderActiveCyclones(container, activeCyclonesList);
       populateSelect(select, activeCyclonesList);
       plotCyclonesOnMap(activeCyclonesList);
+      if (mapStatus) mapStatus.textContent = `${mapStatus.textContent} · spinning center = reported storm position`;
     } else {
       if (!res.sources_checked || !res.sources_checked.length) {
         throw new Error('No authoritative cyclone feed could be reached.');
       }
       if (badge) {
-        badge.textContent = '0 Active (Calm)';
+        badge.textContent = 'No active systems';
         badge.className = 'badge bg-success';
       }
-      renderCalmWithBenchmarks(container, res.message);
-      populateSelect(select, BENCHMARK_CYCLONES);
-      plotBenchmark(BENCHMARK_CYCLONES[0]);
+      if (container) {
+        container.innerHTML = `
+          <div class="empty-state" style="padding:32px;">
+            <div class="empty-state-icon">🌊</div>
+            <div class="empty-state-title">No active tropical cyclones reported</div>
+            <div class="empty-state-desc">${res.message || 'The responding official feeds report no active storms.'}</div>
+            <div class="text-muted mt-2" style="font-size:11px;">This is a live-feed result, not a forecast. Recheck for updates.</div>
+          </div>
+        `;
+      }
+      if (select) select.innerHTML = '<option value="">No live cyclone available</option>';
+      if (mapStatus) mapStatus.textContent = `LIVE FEEDS · ${res.message || 'No active cyclones reported'} · satellite / street map`;
     }
   } catch (err) {
     console.error('Error fetching cyclones:', err);
+    activeCyclonesList = [];
     if (badge) {
       badge.textContent = 'Live status unavailable';
       badge.className = 'badge bg-warning text-dark';
@@ -100,50 +75,38 @@ async function loadCyclonePage() {
         <div class="alert alert-warning" role="status">
           Live cyclone status is unavailable: ${err.message}. No current storm status can be confirmed until an official feed responds.
         </div>
-        <div class="text-muted" style="font-size:12px;">Historical reference tracks are hidden while live status is unavailable.</div>
       `;
     }
+    if (select) select.innerHTML = '<option value="">Live cyclone data unavailable</option>';
+    if (mapStatus) mapStatus.textContent = `LIVE FEED UNAVAILABLE · ${err.message} · no storm position is being simulated`;
+    if (feedsContainer) feedsContainer.textContent = `Official feed status unavailable: ${err.message}`;
   }
-
-  plotReferenceCoastalCities();
 }
 
-function renderCalmWithBenchmarks(container, message) {
+function renderFeedStatus(container, result) {
   if (!container) return;
-  container.innerHTML = `
-    <div style="padding:16px;">
-      <div class="alert alert-success d-flex align-items-center gap-2 mb-3" style="background:#ecfdf5; border-color:#10b981; color:#065f46; font-size:13px;">
-        <span>✅</span>
-        <div>
-          <strong>Live Telemetry Status:</strong> ${message || 'Calm maritime basin. No active tropical cyclones detected.'}
-        </div>
-      </div>
+  container.replaceChildren();
+  const checked = Array.isArray(result.sources_checked) ? result.sources_checked : [];
+  const unavailable = Array.isArray(result.sources_unavailable) ? result.sources_unavailable : [];
+  const summary = document.createElement('p');
+  summary.className = 'text-muted';
+  summary.style.fontSize = '13px';
+  summary.textContent = `${result.message || 'Feed check complete.'}${result.checked_at ? ` Last checked ${window.weatherApp.formatDateTime(result.checked_at)}.` : ''} Feed availability does not itself constitute an official warning bulletin.`;
+  container.appendChild(summary);
 
-      <div style="font-size:12px; color:var(--color-text-muted); margin-bottom:12px;">
-        Historical reference examples (not live systems):
-      </div>
-
-      <div class="d-flex flex-column gap-2">
-        ${BENCHMARK_CYCLONES.map(c => `
-          <div style="background:var(--color-bg-tertiary); border:1px solid var(--color-border); border-radius:8px; padding:12px; display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-size:18px;">🌀</span>
-                <strong style="color:#b91c1c;">${c.name}</strong>
-                <span class="badge bg-secondary" style="font-size:10px;">${c.category}</span>
-              </div>
-              <div style="font-size:11px; color:var(--color-text-muted); margin-top:4px;">
-                Max Winds: ${c.max_wind_speed} km/h &middot; Basin: ${c.basin} &middot; Track: ${c.movement_dir} @ ${c.movement_speed} km/h
-              </div>
-            </div>
-            <button class="btn btn-sm btn-outline-primary" onclick="loadBenchmarkTrack(${c.id})" style="font-size:12px;">
-              Inspect Track
-            </button>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  `;
+  const list = document.createElement('ul');
+  list.className = 'risk-text-list';
+  checked.forEach(source => {
+    const item = document.createElement('li');
+    item.textContent = `${source}: responding`;
+    list.appendChild(item);
+  });
+  unavailable.forEach(source => {
+    const item = document.createElement('li');
+    item.textContent = `${source}: unavailable`;
+    list.appendChild(item);
+  });
+  if (checked.length || unavailable.length) container.appendChild(list);
 }
 
 function renderActiveCyclones(container, cyclones) {
@@ -158,14 +121,15 @@ function renderActiveCyclones(container, cyclones) {
         </div>
         <div style="font-size:13px; color:var(--color-text-primary); margin-bottom:6px;">
           <strong>Intensity:</strong> ${c.category || 'Tropical Cyclone'} &middot;
-          <strong>Max Wind:</strong> ${c.max_wind_speed || '--'} km/h
+          <strong>Max Wind:</strong> ${c.max_wind_speed == null ? 'Not reported' : `${c.max_wind_speed} km/h`}
         </div>
         <div style="font-size:12px; color:var(--color-text-muted);">
-          Position: ${c.lat.toFixed(2)}°N, ${c.lon.toFixed(2)}°E &middot;
-          Track: ${c.movement_dir || 'N/A'} @ ${c.movement_speed || '--'} km/h
+          Position: ${Number(c.lat).toFixed(2)}°, ${Number(c.lon).toFixed(2)}° &middot;
+          Reported motion: ${c.movement_dir || 'Not reported'}${c.movement_speed == null ? '' : ` @ ${c.movement_speed} km/h`}
+          &middot; ${c.source || 'Official feed'}
         </div>
       </div>
-      <button class="btn btn-sm btn-outline-primary" onclick="focusCyclone(${c.lat}, ${c.lon})">
+      <button class="btn btn-sm btn-outline-primary" onclick="focusCyclone(${Number(c.lat)}, ${Number(c.lon)})">
         Center Map
       </button>
     </div>
@@ -174,67 +138,31 @@ function renderActiveCyclones(container, cyclones) {
 
 function populateSelect(select, cyclones) {
   if (!select) return;
-  select.innerHTML = cyclones.map(c => `
-    <option value="${c.id || c.name}">${c.name} (${c.category})</option>
+  select.innerHTML = '<option value="">Select a live cyclone</option>' + cyclones.map((c, index) => `
+    <option value="${index}">${c.name} (${c.category || 'Active system'})</option>
   `).join('');
 }
 
 function plotCyclonesOnMap(cyclones) {
   cyclones.forEach(c => {
     window.weatherMap.addCycloneMarker('cycloneTrackingMap', c);
+    window.weatherMap.addCycloneMovement('cycloneTrackingMap', c);
   });
-  if (cyclones.length > 0 && cyclones[0].lat && cyclones[0].lon) {
-    window.weatherMap.flyTo('cycloneTrackingMap', cyclones[0].lat, cyclones[0].lon, 6);
+  const movingSystems = cyclones.filter(c =>
+    window.weatherMap.parseBearing(c.movement_dir) != null &&
+    Number.isFinite(Number(c.movement_speed)) &&
+    Number(c.movement_speed) > 0
+  ).length;
+  const mapStatus = document.getElementById('cycloneMapStatus');
+  if (mapStatus && movingSystems < cyclones.length) {
+    mapStatus.textContent += ` · motion vector available for ${movingSystems}/${cyclones.length} system(s)`;
   }
-}
-
-function plotBenchmark(c) {
-  window.weatherMap.clearMap('cycloneTrackingMap');
-  plotReferenceCoastalCities();
-
-  window.weatherMap.addCycloneMarker('cycloneTrackingMap', c);
-
-  if (c.track && c.track.length > 1) {
-    window.weatherMap.drawTrack('cycloneTrackingMap', c.track, false);
+  if (cyclones.length === 1) {
+    window.weatherMap.flyTo('cycloneTrackingMap', Number(cyclones[0].lat), Number(cyclones[0].lon), 6);
+  } else if (cyclones.length > 1) {
+    const bounds = L.latLngBounds(cyclones.map(c => [Number(c.lat), Number(c.lon)]));
+    window.weatherMap.maps.cycloneTrackingMap.fitBounds(bounds.pad(0.35), { maxZoom: 6 });
   }
-  if (c.forecast && c.forecast.length > 1) {
-    window.weatherMap.drawTrack('cycloneTrackingMap', c.forecast, true);
-  }
-
-  window.weatherMap.flyTo('cycloneTrackingMap', c.lat, c.lon, 6);
-}
-
-function loadBenchmarkTrack(cycloneId) {
-  const c = BENCHMARK_CYCLONES.find(b => b.id === cycloneId);
-  if (c) {
-    plotBenchmark(c);
-    const select = document.getElementById('arrivalCycloneSelect');
-    if (select) select.value = c.id;
-    window.weatherApp.showToast(`Loaded track for Cyclone ${c.name} on map.`, 'info');
-  }
-}
-
-function plotReferenceCoastalCities() {
-  const coastal = [
-    { name: 'Mumbai', lat: 19.0760, lon: 72.8777 },
-    { name: 'Visakhapatnam', lat: 17.6868, lon: 83.2185 },
-    { name: 'Chennai', lat: 13.0827, lon: 80.2707 },
-    { name: 'Puri / Bhubaneswar', lat: 19.8135, lon: 85.8312 },
-    { name: 'Kolkata', lat: 22.5726, lon: 88.3639 },
-    { name: 'Surat', lat: 21.1702, lon: 72.8311 }
-  ];
-
-  coastal.forEach(c => {
-    window.weatherMap.addWeatherMarker(
-      'cycloneTrackingMap',
-      c.lat,
-      c.lon,
-      c.name,
-      'Monitoring',
-      'Coastal Station',
-      '⚓'
-    );
-  });
 }
 
 function focusCyclone(lat, lon) {
@@ -254,18 +182,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const calcBtn = document.getElementById('calcArrivalBtn');
   if (calcBtn) {
-    calcBtn.addEventListener('click', () => {
-      const cityVal = document.getElementById('arrivalCitySelect').value;
-      const [latStr, lonStr, cityName] = cityVal.split(',');
-      const tLat = parseFloat(latStr);
-      const tLon = parseFloat(lonStr);
-
-      const cycVal = document.getElementById('arrivalCycloneSelect').value;
-      let c = activeCyclonesList.find(x => String(x.id) === String(cycVal) || x.name === cycVal);
-      if (!c) {
-        c = BENCHMARK_CYCLONES.find(x => String(x.id) === String(cycVal)) || BENCHMARK_CYCLONES[0];
-      }
-
+    calcBtn.addEventListener('click', async () => {
+      const locationQuery = document.getElementById('arrivalCityInput').value.trim();
+      const selectedValue = document.getElementById('arrivalCycloneSelect').value;
+      const selectedIndex = selectedValue === '' ? -1 : Number(selectedValue);
+      const cyclone = Number.isInteger(selectedIndex) && selectedIndex >= 0
+        ? activeCyclonesList[selectedIndex]
+        : null;
       const resBox = document.getElementById('arrivalResultsContainer');
       const title = document.getElementById('arrivalResultTitle');
       const distEl = document.getElementById('arrDistance');
@@ -273,24 +196,67 @@ document.addEventListener('DOMContentLoaded', () => {
       const speedEl = document.getElementById('arrSpeed');
       const winEl = document.getElementById('arrWindow');
 
-      // Haversine calculation
-      const R = 6371;
-      const dLat = (tLat - c.lat) * Math.PI / 180;
-      const dLon = (tLon - c.lon) * Math.PI / 180;
-      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(c.lat * Math.PI / 180) * Math.cos(tLat * Math.PI / 180) *
-                Math.sin(dLon/2) * Math.sin(dLon/2);
-      const dist = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+      if (!cyclone) {
+        window.weatherApp.showToast('Select an active cyclone from the live official feeds first.', 'warning');
+        return;
+      }
+      if (!locationQuery) {
+        window.weatherApp.showToast('Enter a city and country to resolve its live coordinates.', 'warning');
+        return;
+      }
 
-      const speed = c.movement_speed || 15;
-      const hours = Math.round(dist / speed);
+      calcBtn.disabled = true;
+      try {
+        const search = await window.weatherApp.fetchAPI(`/weather/search?q=${encodeURIComponent(locationQuery)}`);
+        const locations = search.results && search.results.cities || [];
+        if (!locations.length) throw new Error(`No location found for "${locationQuery}". Include the country name.`);
+        const location = locations[0];
+        const tLat = Number(location.lat);
+        const tLon = Number(location.lon);
+        if (!Number.isFinite(tLat) || !Number.isFinite(tLon)) {
+          throw new Error('The location provider did not return valid coordinates.');
+        }
 
-      title.textContent = `Kinematic Arrival Window for ${cityName} (${c.name})`;
-      distEl.textContent = `${dist} km from current coordinates`;
-      dirEl.textContent = `${c.movement_dir || 'NNE'} forward propagation`;
-      speedEl.textContent = `${speed} km/h forward translation`;
-      winEl.textContent = `Estimated landfall window: ${hours} - ${hours + 8} hours`;
-      resBox.style.display = 'block';
+        const lat1 = Number(cyclone.lat) * Math.PI / 180;
+        const lat2 = tLat * Math.PI / 180;
+        const deltaLat = lat2 - lat1;
+        const deltaLon = (tLon - Number(cyclone.lon)) * Math.PI / 180;
+        const a = Math.sin(deltaLat / 2) ** 2 +
+          Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) ** 2;
+        const distance = Math.round(6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+        const bearing = (Math.atan2(
+          Math.sin(deltaLon) * Math.cos(lat2),
+          Math.cos(lat1) * Math.sin(lat2) -
+          Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLon)
+        ) * 180 / Math.PI + 360) % 360;
+        const reportedHeading = window.weatherMap.parseBearing(cyclone.movement_dir);
+        const speed = Number(cyclone.movement_speed);
+
+        title.textContent = `${location.name}${location.country_name ? `, ${location.country_name}` : ''} · ${cyclone.name}`;
+        distEl.textContent = `${distance.toLocaleString()} km from reported storm center`;
+        dirEl.textContent = cyclone.movement_dir
+          ? `${cyclone.movement_dir} reported by ${cyclone.source || 'official feed'}`
+          : 'Not reported by the official feed';
+        speedEl.textContent = Number.isFinite(speed) && speed > 0
+          ? `${speed} km/h reported translation speed`
+          : 'Not reported by the official feed';
+
+        if (reportedHeading == null || !Number.isFinite(speed) || speed <= 0) {
+          winEl.textContent = 'Unavailable: feed has no movement vector';
+        } else {
+          const headingDifference = Math.abs(((bearing - reportedHeading + 540) % 360) - 180);
+          winEl.textContent = headingDifference <= 45
+            ? `About ${Math.round(distance / speed)} h at constant reported speed; not a forecast`
+            : 'No estimate: location is not along the reported forward heading';
+        }
+        resBox.style.display = 'block';
+      } catch (error) {
+        window.weatherApp.showToast(`Could not check live location: ${error.message}`, 'danger');
+      } finally {
+        calcBtn.disabled = false;
+      }
     });
   }
+
+  window.setInterval(loadCyclonePage, 5 * 60 * 1000);
 });

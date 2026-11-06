@@ -6,6 +6,8 @@ class WeatherMap {
   constructor() {
     this.maps = {};
     this.layerGroups = {};
+    this.baseLayers = {};
+    this.layerControls = {};
     this.tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
     this.attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
   }
@@ -26,17 +28,38 @@ class WeatherMap {
       scrollWheelZoom: true
     });
 
-    L.tileLayer(this.tileUrl, {
+    const baseLayer = L.tileLayer(this.tileUrl, {
       attribution: this.attribution,
       maxZoom: 19
     }).addTo(map);
 
     this.maps[containerId] = map;
+    this.baseLayers[containerId] = baseLayer;
     this.layerGroups[containerId] = L.layerGroup().addTo(map);
 
     // Invalidate size once rendered
     setTimeout(() => map.invalidateSize(), 300);
     return map;
+  }
+
+  addCycloneBasemaps(containerId) {
+    const map = this.maps[containerId];
+    if (!map || this.layerControls[containerId]) return;
+
+    const street = this.baseLayers[containerId];
+    const satellite = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      {
+        attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics',
+        maxZoom: 18
+      }
+    ).addTo(map);
+    if (street) map.removeLayer(street);
+    this.layerControls[containerId] = L.control.layers(
+      { 'Satellite imagery': satellite, 'Street map': street },
+      {},
+      { collapsed: false, position: 'topright' }
+    ).addTo(map);
   }
 
   clearMap(containerId) {
@@ -74,17 +97,18 @@ class WeatherMap {
 
   addCycloneMarker(containerId, cyclone) {
     const lg = this.layerGroups[containerId];
-    if (!lg || !cyclone.lat || !cyclone.lon) return;
+    if (!lg || cyclone.lat == null || cyclone.lon == null ||
+        !Number.isFinite(Number(cyclone.lat)) || !Number.isFinite(Number(cyclone.lon))) return;
 
     const cycloneIcon = L.divIcon({
       className: 'cyclone-marker-icon',
       html: `
-        <div style="width: 32px; height: 32px; background: rgba(239, 68, 68, 0.3); border: 2px solid #ef4444; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; animation: pulse-danger 2s infinite;">
-          🌀
+        <div class="cyclone-marker-core">
+          <span class="cyclone-marker-vortex" aria-hidden="true">🌀</span>
         </div>
       `,
-      iconSize: [32, 32],
-      iconAnchor: [16, 16]
+      iconSize: [60, 60],
+      iconAnchor: [30, 30]
     });
 
     const marker = L.marker([cyclone.lat, cyclone.lon], { icon: cycloneIcon });
@@ -95,19 +119,84 @@ class WeatherMap {
         <div style="font-size: 12px; margin-bottom: 3px;"><strong>Wind Speed:</strong> ${cyclone.max_wind_speed ? cyclone.max_wind_speed + ' km/h' : 'N/A'}</div>
         <div style="font-size: 12px; margin-bottom: 3px;"><strong>Movement:</strong> ${cyclone.movement_dir || 'N/A'} @ ${cyclone.movement_speed ? cyclone.movement_speed + ' km/h' : 'N/A'}</div>
         <div style="font-size: 12px;"><strong>Source:</strong> ${cyclone.source || 'Meteorological Service'}</div>
+        <div style="font-size: 11px; color: #64748b;"><strong>Live position:</strong> ${Number(cyclone.lat).toFixed(2)}, ${Number(cyclone.lon).toFixed(2)}</div>
       </div>
     `);
     lg.addLayer(marker);
+  }
 
-    // Draw affected buffer circle (e.g. 250 km radius)
-    const circle = L.circle([cyclone.lat, cyclone.lon], {
-      color: '#ef4444',
-      fillColor: '#ef4444',
-      fillOpacity: 0.15,
-      radius: 250000 // 250 km
+  addCycloneMovement(containerId, cyclone, horizonHours = 6) {
+    const lg = this.layerGroups[containerId];
+    const map = this.maps[containerId];
+    if (cyclone.lat == null || cyclone.lon == null) return false;
+    const lat = Number(cyclone.lat);
+    const lon = Number(cyclone.lon);
+    const speed = Number(cyclone.movement_speed);
+    const bearing = this.parseBearing(cyclone.movement_dir);
+    if (!lg || !map || !Number.isFinite(lat) || !Number.isFinite(lon) ||
+        !Number.isFinite(speed) || speed <= 0 || bearing == null) return false;
+
+    const points = [];
+    for (let hour = 0; hour <= horizonHours; hour += 1) {
+      points.push(this.destinationPoint(lat, lon, bearing, speed * hour));
+    }
+
+    const motionPath = L.polyline(points, {
+      color: '#f97316',
+      weight: 4,
+      opacity: 0.9,
+      dashArray: '9 10',
+      className: 'cyclone-motion-line'
     });
-    circle.bindTooltip(`Gale warning radius: 250 km`, { sticky: true });
-    lg.addLayer(circle);
+    motionPath.bindTooltip(
+      `${horizonHours}-hour motion projection from provider-reported heading and speed · not an official forecast`,
+      { sticky: true }
+    );
+    lg.addLayer(motionPath);
+
+    const projectedPosition = points[points.length - 1];
+    const projectedMarker = L.circleMarker(projectedPosition, {
+      radius: 6,
+      color: '#fff',
+      weight: 2,
+      fillColor: '#f97316',
+      fillOpacity: 1
+    });
+    projectedMarker.bindTooltip(`${horizonHours}-hour motion projection (estimated)`);
+    lg.addLayer(projectedMarker);
+    return true;
+  }
+
+  parseBearing(direction) {
+    if (direction == null) return null;
+    const value = String(direction).trim().toUpperCase();
+    const numeric = Number.parseFloat(value);
+    if (Number.isFinite(numeric)) return ((numeric % 360) + 360) % 360;
+    const bearings = {
+      N: 0, NNE: 22.5, NE: 45, ENE: 67.5,
+      E: 90, ESE: 112.5, SE: 135, SSE: 157.5,
+      S: 180, SSW: 202.5, SW: 225, WSW: 247.5,
+      W: 270, WNW: 292.5, NW: 315, NNW: 337.5
+    };
+    return Object.prototype.hasOwnProperty.call(bearings, value) ? bearings[value] : null;
+  }
+
+  destinationPoint(latitude, longitude, bearing, distanceKm) {
+    const earthRadiusKm = 6371;
+    const angularDistance = distanceKm / earthRadiusKm;
+    const bearingRadians = bearing * Math.PI / 180;
+    const latitudeRadians = latitude * Math.PI / 180;
+    const longitudeRadians = longitude * Math.PI / 180;
+    const destinationLatitude = Math.asin(
+      Math.sin(latitudeRadians) * Math.cos(angularDistance) +
+      Math.cos(latitudeRadians) * Math.sin(angularDistance) * Math.cos(bearingRadians)
+    );
+    const destinationLongitude = longitudeRadians + Math.atan2(
+      Math.sin(bearingRadians) * Math.sin(angularDistance) * Math.cos(latitudeRadians),
+      Math.cos(angularDistance) - Math.sin(latitudeRadians) * Math.sin(destinationLatitude)
+    );
+    const wrappedLongitude = (destinationLongitude * 180 / Math.PI + 540) % 360 - 180;
+    return [destinationLatitude * 180 / Math.PI, wrappedLongitude];
   }
 
   drawTrack(containerId, points, isForecast = false) {

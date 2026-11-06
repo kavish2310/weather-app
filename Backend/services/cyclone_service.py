@@ -73,6 +73,7 @@ class CycloneService:
             'sources_checked': sources_checked,
             'sources_unavailable': sources_unavailable,
             'message': message,
+            'checked_at': datetime.now(timezone.utc).isoformat(),
             'status': 503 if all_sources_failed else 200,
         }
 

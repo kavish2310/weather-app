@@ -1915,6 +1915,96 @@ h6, .h6 { font-size: var(--font-size-base); font-weight: 500; line-height: 1.5; 
    PRINT STYLES
    ============================================ */
 
+.risk-data-detail {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  margin: -1px 0 7px 25px;
+}
+
+.cyclone-map-status {
+  position: absolute;
+  z-index: 500;
+  top: 14px;
+  left: 58px;
+  max-width: min(460px, calc(100% - 80px));
+  padding: 9px 13px;
+  border: 1px solid rgba(148, 163, 184, .55);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, .88);
+  color: #f8fafc;
+  font-size: 12px;
+  line-height: 1.5;
+  box-shadow: 0 5px 18px rgba(15, 23, 42, .25);
+  backdrop-filter: blur(8px);
+}
+
+.cyclone-marker-icon {
+  background: transparent;
+  border: 0;
+}
+
+.cyclone-marker-core {
+  position: relative;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 2px solid rgba(255, 255, 255, .95);
+  border-radius: 50%;
+  background: #e11d48;
+  color: white;
+  font-size: 22px;
+  box-shadow: 0 0 0 5px rgba(225, 29, 72, .24), 0 4px 14px rgba(15, 23, 42, .35);
+}
+
+.cyclone-marker-core::before {
+  position: absolute;
+  inset: -10px;
+  border: 2px solid rgba(244, 63, 94, .72);
+  border-radius: 50%;
+  content: "";
+  animation: cyclone-radar-pulse 2.2s ease-out infinite;
+}
+
+.cyclone-marker-vortex {
+  line-height: 1;
+  animation: cyclone-vortex-spin 5s linear infinite;
+}
+
+.cyclone-motion-line {
+  animation: cyclone-motion-flow 1.4s linear infinite;
+}
+
+@keyframes cyclone-radar-pulse {
+  0% { opacity: .8; transform: scale(.65); }
+  100% { opacity: 0; transform: scale(1.45); }
+}
+
+@keyframes cyclone-vortex-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes cyclone-motion-flow {
+  to { stroke-dashoffset: -36; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cyclone-marker-core::before,
+  .cyclone-marker-vortex,
+  .cyclone-motion-line {
+    animation: none;
+  }
+}
+
+@media (max-width: 576px) {
+  .cyclone-map-status {
+    top: 10px;
+    left: 54px;
+    font-size: 10px;
+  }
+}
+
 @media print {
   .sidebar,
   .top-navbar,

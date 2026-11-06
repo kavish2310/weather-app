@@ -381,6 +381,22 @@ class TestCycloneEndpoints(unittest.TestCase):
             response = self.client.get('/api/cyclones/active')
         self.assertEqual(response.status_code, 200)
 
+    def test_active_cyclone_feed_includes_check_time_and_source_status(self):
+        from Backend.services.cyclone_service import CycloneService
+
+        service = CycloneService()
+        with patch.object(service, '_fetch_nhc_feed', return_value=[]), \
+             patch.object(service, '_fetch_jtwc_feed', return_value=[]), \
+             patch.object(service, '_fetch_imd_feed', return_value=[]), \
+             patch.object(service, '_save_cyclone'):
+            response = service.get_active_cyclones()
+
+        self.assertEqual(response['status'], 200)
+        self.assertEqual(response['sources_checked'], [
+            'NOAA NHC Atlantic', 'NOAA NHC Eastern Pacific', 'JTWC', 'IMD India'
+        ])
+        self.assertIsNotNone(response['checked_at'])
+
     def test_jtwc_warning_parser_reads_official_position_and_winds(self):
         from Backend.services.cyclone_service import CycloneService
 
@@ -468,11 +484,12 @@ class TestRiskEndpoints(unittest.TestCase):
             'humidity': 68,
             'visibility': 10000,
             'source': 'Open-Meteo (live model data)',
+            'country': 'IN',
             'observed_at': '2026-11-06T12:00:00Z',
         }
         with patch('Backend.routes.risk_routes.weather_service.get_current_weather', return_value=weather), \
              patch('Backend.routes.risk_routes.cyclone_service.get_active_cyclones', return_value={
-                 'cyclones': [], 'status': 200
+                 'cyclones': [], 'status': 200, 'checked_at': '2026-11-06T12:05:00Z'
              }):
             response = self.client.get('/api/risk/assessment?city=Mumbai')
 
@@ -488,6 +505,8 @@ class TestRiskEndpoints(unittest.TestCase):
         self.assertEqual(assessment['individual_risks']['cyclone_proximity'], 0)
         self.assertEqual(assessment['cyclone_feed_status'], 'available')
         self.assertEqual(assessment['data_source'], 'Open-Meteo (live model data)')
+        self.assertEqual(assessment['country'], 'IN')
+        self.assertIsNotNone(assessment['cyclone_feed_checked_at'])
 
     def test_nearest_active_cyclone_is_used_for_proximity_score(self):
         weather = {
@@ -529,6 +548,24 @@ class TestRiskEndpoints(unittest.TestCase):
         self.assertIsNone(assessment['individual_risks']['rainfall'])
         self.assertIsNone(assessment['individual_risks']['flood'])
         self.assertEqual(assessment['risk_level'], 'Unavailable')
+
+    def test_storm_surge_is_not_reported_as_zero_for_unlisted_locations(self):
+        from Backend.services.risk_service import RiskAssessmentService
+
+        assessment = RiskAssessmentService().assess_risk(
+            'Bogota',
+            {
+                'country': 'CO',
+                'wind_speed': 5,
+                'rainfall': 0,
+                'pressure': 1015,
+                'source': 'Open-Meteo (live model data)',
+            },
+            {'no_active_cyclones': True, 'feed_checked': True}
+        )
+
+        self.assertEqual(assessment['country'], 'CO')
+        self.assertIsNone(assessment['individual_risks']['storm_surge'])
 
 
 class TestSettingsEndpoints(unittest.TestCase):
@@ -693,6 +730,7 @@ class TestUtilityFunctions(unittest.TestCase):
         from utils import validate_city_name
         self.assertTrue(validate_city_name('Indore'))
         self.assertTrue(validate_city_name('New Delhi'))
+        self.assertTrue(validate_city_name('Buenos Aires, Argentina'))
         self.assertFalse(validate_city_name(''))
         self.assertFalse(validate_city_name('   '))
 

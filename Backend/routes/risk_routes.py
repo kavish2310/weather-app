@@ -62,6 +62,7 @@ def get_risk_assessment():
         weather_data=weather_data,
         cyclone_data=relevant_cyclone
     )
+    assessment['cyclone_feed_checked_at'] = active_res.get('checked_at')
 
     return jsonify({'status': 'success', 'data': assessment}), 200
 
