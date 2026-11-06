@@ -17,8 +17,12 @@ async function loadRiskAssessment(cityName) {
   const floodBar = document.getElementById('floodRiskBar');
   const surgeVal = document.getElementById('surgeRiskVal');
   const surgeBar = document.getElementById('surgeRiskBar');
+  const cycloneVal = document.getElementById('cycloneRiskVal');
+  const cycloneBar = document.getElementById('cycloneRiskBar');
   const recsContainer = document.getElementById('recommendationsList');
   const factorsContainer = document.getElementById('contributingFactorsList');
+  const dataContext = document.getElementById('riskDataContext');
+  const weatherSummary = document.getElementById('riskWeatherSummary');
 
   try {
     const res = await window.weatherApp.fetchAPI(`/risk/assessment?city=${encodeURIComponent(city)}`);
@@ -37,6 +41,26 @@ async function loadRiskAssessment(cityName) {
       else if (level === 'Unavailable') badgeEl.style.background = 'var(--color-text-muted)';
       else badgeEl.style.background = 'var(--color-danger)';
     }
+    if (dataContext) {
+      const observedAt = data.observed_at
+        ? ` · Observed ${window.weatherApp.formatDateTime(data.observed_at)}`
+        : '';
+      const cycloneStatus = data.cyclone_feed_status === 'available'
+        ? 'Cyclone feed checked'
+        : 'Cyclone feed unavailable';
+      dataContext.textContent = `${data.data_source || 'Weather source unavailable'}${observedAt} · ${cycloneStatus}`;
+    }
+    if (weatherSummary) {
+      const summary = data.weather_summary || {};
+      const display = (value, unit) => value == null ? 'Unavailable' : `${value}${unit}`;
+      weatherSummary.textContent = [
+        `Temperature ${display(summary.temperature_c, '°C')}`,
+        `Humidity ${display(summary.humidity_pct, '%')}`,
+        `Wind ${display(summary.wind_speed_kmh, ' km/h')}`,
+        `Precipitation ${display(summary.rainfall_mm, ' mm')}`,
+        `Pressure ${display(summary.pressure_hpa, ' hPa')}`
+      ].join(' · ');
+    }
 
     const ind = data.individual_risks || {};
     const setRiskMetric = (value, label, bar) => {
@@ -47,10 +71,11 @@ async function loadRiskAssessment(cityName) {
       if (bar) bar.style.width = `${score ?? 0}%`;
     };
 
-    setRiskMetric(ind.wind_risk, windVal, windBar);
-    setRiskMetric(ind.rainfall_risk, rainVal, rainBar);
-    setRiskMetric(ind.flood_risk, floodVal, floodBar);
-    setRiskMetric(ind.storm_surge_risk, surgeVal, surgeBar);
+    setRiskMetric(ind.wind, windVal, windBar);
+    setRiskMetric(ind.rainfall, rainVal, rainBar);
+    setRiskMetric(ind.flood, floodVal, floodBar);
+    setRiskMetric(ind.storm_surge, surgeVal, surgeBar);
+    setRiskMetric(ind.cyclone_proximity, cycloneVal, cycloneBar);
 
     // Recommendations
     if (recsContainer) {
@@ -78,11 +103,14 @@ async function loadRiskAssessment(cityName) {
         factors.forEach(factor => {
           const entry = document.createElement('div');
           entry.className = 'risk-factor';
-          entry.textContent = `• ${factor}`;
+          const name = String(factor.factor || 'Weather hazard').replaceAll('_', ' ');
+          entry.textContent = `${name}: ${factor.score} / 100 (${factor.level || 'Elevated'})`;
           factorsContainer.appendChild(entry);
         });
+      } else if (overall !== '--') {
+        factorsContainer.textContent = 'No elevated contributing hazards were identified in the available measurements (scores below 30).';
       } else {
-        factorsContainer.textContent = 'Contributing factors are unavailable for the current assessment.';
+        factorsContainer.textContent = 'Contributing factors are unavailable because required live measurements are missing.';
       }
     }
   } catch (err) {
@@ -92,14 +120,16 @@ async function loadRiskAssessment(cityName) {
       badgeEl.textContent = 'ASSESSMENT UNAVAILABLE';
       badgeEl.style.background = 'var(--color-text-muted)';
     }
-    [windVal, rainVal, floodVal, surgeVal].forEach(element => {
+    [windVal, rainVal, floodVal, surgeVal, cycloneVal].forEach(element => {
       if (element) element.textContent = 'Unavailable';
     });
-    [windBar, rainBar, floodBar, surgeBar].forEach(element => {
+    [windBar, rainBar, floodBar, surgeBar, cycloneBar].forEach(element => {
       if (element) element.style.width = '0%';
     });
     if (recsContainer) recsContainer.textContent = `Recommendations unavailable: ${err.message}`;
     if (factorsContainer) factorsContainer.textContent = `Risk factors unavailable: ${err.message}`;
+    if (dataContext) dataContext.textContent = `Live risk data unavailable: ${err.message}`;
+    if (weatherSummary) weatherSummary.textContent = `Current conditions unavailable: ${err.message}`;
   }
 }
 

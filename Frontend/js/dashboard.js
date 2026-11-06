@@ -134,9 +134,23 @@ function updateCurrentWeather(data) {
 
   const cloudCover = document.getElementById('cloudCover');
   if (cloudCover) cloudCover.innerHTML = `${data.clouds ?? '--'}<span class="unit">%</span>`;
+  const cloudDesc = document.getElementById('cloudDesc');
+  if (cloudDesc) {
+    cloudDesc.textContent = data.clouds == null
+      ? 'Cloud cover unavailable from provider'
+      : `${data.clouds <= 10 ? 'Mostly clear' : data.clouds <= 50 ? 'Partly cloudy' : 'Cloudy'} · ${data.source || 'Live weather data'}`;
+  }
 
   const rainfall = document.getElementById('rainfall');
   if (rainfall) rainfall.innerHTML = `${data.rainfall ?? '--'}<span class="unit"> mm</span>`;
+  const rainfallDesc = document.getElementById('rainfallDesc');
+  if (rainfallDesc) {
+    rainfallDesc.textContent = data.rainfall == null
+      ? 'Current-hour precipitation unavailable'
+      : data.rainfall === 0
+        ? `No precipitation in the current hour · ${data.source || 'Live weather data'}`
+        : `Current-hour precipitation · ${data.source || 'Live weather data'}`;
+  }
 
   // Leaflet Mini Map
   if (data.lat && data.lon) {

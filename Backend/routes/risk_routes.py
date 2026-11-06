@@ -8,6 +8,7 @@ from Backend.services.risk_service import RiskAssessmentService
 from Backend.services.weather_service import WeatherService
 from Backend.services.cyclone_service import CycloneService
 from Backend.models import Cyclone
+from Backend.utils import haversine_distance
 
 risk_bp = Blueprint('risk', __name__, url_prefix='/api/risk')
 risk_service = RiskAssessmentService()
@@ -37,7 +38,24 @@ def get_risk_assessment():
     # Check for active cyclones near or relevant to this city
     active_res = cyclone_service.get_active_cyclones()
     cyclones = active_res.get('cyclones', [])
-    relevant_cyclone = cyclones[0] if cyclones else None
+    city_lat = weather_data.get('lat')
+    city_lon = weather_data.get('lon')
+    geolocated_cyclones = [
+        cyclone for cyclone in cyclones
+        if cyclone.get('lat') is not None and cyclone.get('lon') is not None
+    ]
+    relevant_cyclone = None
+    if city_lat is not None and city_lon is not None and geolocated_cyclones:
+        relevant_cyclone = min(
+            geolocated_cyclones,
+            key=lambda cyclone: haversine_distance(
+                cyclone['lat'], cyclone['lon'], city_lat, city_lon
+            )
+        )
+    elif cyclones:
+        relevant_cyclone = cyclones[0]
+    elif active_res.get('status') == 200:
+        relevant_cyclone = {'feed_checked': True, 'no_active_cyclones': True}
 
     assessment = risk_service.assess_risk(
         city=city_name.strip(),

@@ -6,6 +6,7 @@ produce an overall risk score (0-100) with recommendations.
 """
 
 import logging
+import math
 
 from Backend.utils import haversine_distance
 
@@ -43,22 +44,35 @@ class RiskAssessmentService:
         Returns:
             dict: Full risk assessment with scores, level, recommendations.
         """
-        wind_speed = weather_data.get('wind_speed', 0) or 0
-        rainfall = weather_data.get('rainfall', 0) or 0
-        pressure = weather_data.get('pressure', 1013) or 1013
-        humidity = weather_data.get('humidity', 0) or 0
-        visibility = weather_data.get('visibility', 10000) or 10000
-        temperature = weather_data.get('temperature', 25) or 25
+        def numeric_value(value):
+            try:
+                number = float(value)
+                return number if math.isfinite(number) else None
+            except (TypeError, ValueError):
+                return None
 
-        # Convert OWM wind speed (m/s) to km/h for risk calculations
-        wind_speed_kmh = wind_speed * 3.6
+        wind_speed = numeric_value(weather_data.get('wind_speed'))
+        rainfall = numeric_value(weather_data.get('rainfall'))
+        pressure = numeric_value(weather_data.get('pressure'))
+        humidity = numeric_value(weather_data.get('humidity'))
+        visibility = numeric_value(weather_data.get('visibility'))
+        temperature = numeric_value(weather_data.get('temperature'))
+        source = weather_data.get('source') or 'Weather provider (source not reported)'
+        wind_unit = (weather_data.get('wind_speed_unit') or '').lower()
+        wind_speed_kmh = (
+            wind_speed if wind_unit in ('km/h', 'kmh', 'kph') or 'open-meteo' in source.lower()
+            else wind_speed * 3.6 if wind_unit in ('m/s', 'mps') or 'openweathermap' in source.lower()
+            else None
+        )
 
-        wind_risk = self.calculate_wind_risk(wind_speed_kmh)
-        rainfall_risk = self.calculate_rainfall_risk(rainfall)
-        flood_risk = self.calculate_flood_risk(rainfall, duration_hours=1)
+        wind_risk = self.calculate_wind_risk(wind_speed_kmh) if wind_speed_kmh is not None else None
+        rainfall_risk = self.calculate_rainfall_risk(rainfall) if rainfall is not None else None
+        flood_risk = self.calculate_flood_risk(rainfall, duration_hours=1) if rainfall is not None else None
         is_coastal = self._is_coastal_city(city)
-        storm_surge_risk = self.calculate_storm_surge_risk(
-            wind_speed_kmh, pressure, is_coastal
+        storm_surge_risk = (
+            self.calculate_storm_surge_risk(wind_speed_kmh, pressure, is_coastal)
+            if not is_coastal or (wind_speed_kmh is not None and pressure is not None)
+            else None
         )
 
         individual_risks = {
@@ -69,13 +83,18 @@ class RiskAssessmentService:
         }
 
         # Extra risk from nearby cyclone
-        cyclone_proximity_risk = 0
-        if cyclone_data and cyclone_data.get('lat') and cyclone_data.get('lon'):
-            city_lat = weather_data.get('lat')
-            city_lon = weather_data.get('lon')
-            if city_lat and city_lon:
+        cyclone_proximity_risk = None
+        if cyclone_data and cyclone_data.get('no_active_cyclones'):
+            cyclone_proximity_risk = 0
+            individual_risks['cyclone_proximity'] = cyclone_proximity_risk
+        elif cyclone_data and cyclone_data.get('lat') is not None and cyclone_data.get('lon') is not None:
+            city_lat = numeric_value(weather_data.get('lat'))
+            city_lon = numeric_value(weather_data.get('lon'))
+            cyclone_lat = numeric_value(cyclone_data.get('lat'))
+            cyclone_lon = numeric_value(cyclone_data.get('lon'))
+            if None not in (city_lat, city_lon, cyclone_lat, cyclone_lon):
                 dist = haversine_distance(
-                    cyclone_data['lat'], cyclone_data['lon'],
+                    cyclone_lat, cyclone_lon,
                     city_lat, city_lon,
                 )
                 if dist < 100:
@@ -86,14 +105,24 @@ class RiskAssessmentService:
                     cyclone_proximity_risk = 45
                 elif dist < 1000:
                     cyclone_proximity_risk = 20
+                else:
+                    cyclone_proximity_risk = 0
                 individual_risks['cyclone_proximity'] = cyclone_proximity_risk
 
-        overall_score = self.calculate_overall_risk(individual_risks)
-        risk_level = self.get_risk_level(overall_score)
+        weather_measurements_available = any(
+            score is not None
+            for score in (wind_risk, rainfall_risk, flood_risk)
+        ) or (is_coastal and storm_surge_risk is not None)
+        overall_score = (
+            self.calculate_overall_risk(individual_risks)
+            if weather_measurements_available
+            else None
+        )
+        risk_level = self.get_risk_level(overall_score) if overall_score is not None else 'Unavailable'
 
         contributing = []
         for factor, score in individual_risks.items():
-            if score >= 30:
+            if score is not None and score >= 30:
                 contributing.append({
                     'factor': factor,
                     'score': score,
@@ -101,7 +130,11 @@ class RiskAssessmentService:
                 })
         contributing.sort(key=lambda x: x['score'], reverse=True)
 
-        recommendations = self.get_recommendations(risk_level, individual_risks)
+        recommendations = (
+            self.get_recommendations(risk_level, individual_risks)
+            if overall_score is not None
+            else ['Risk score unavailable because the live weather feed omitted required measurements.']
+        )
 
         return {
             'city': city,
@@ -112,13 +145,20 @@ class RiskAssessmentService:
             'recommendations': recommendations,
             'is_coastal': is_coastal,
             'weather_summary': {
-                'wind_speed_kmh': round(wind_speed_kmh, 1),
+                'wind_speed_kmh': round(wind_speed_kmh, 1) if wind_speed_kmh is not None else None,
                 'rainfall_mm': rainfall,
                 'pressure_hpa': pressure,
                 'humidity_pct': humidity,
                 'visibility_m': visibility,
                 'temperature_c': temperature,
             },
+            'data_source': source,
+            'observed_at': weather_data.get('observed_at'),
+            'cyclone_feed_status': (
+                'available' if cyclone_data and cyclone_data.get('feed_checked')
+                else 'unavailable' if cyclone_data is None
+                else 'available'
+            ),
             'methodology': (
                 'Risk scores (0-100) are computed from Beaufort-scale wind thresholds, '
                 'IMD/WMO rainfall intensity categories, hydrological flood estimates, '
@@ -147,6 +187,8 @@ class RiskAssessmentService:
         Returns:
             int: Risk score 0-100.
         """
+        if wind_speed_kmh is None:
+            return None
         if wind_speed_kmh < 20:
             return 0
         if wind_speed_kmh < 40:
@@ -173,6 +215,8 @@ class RiskAssessmentService:
         Returns:
             int: Risk score 0-100.
         """
+        if rainfall_mm is None:
+            return None
         if rainfall_mm < 2.5:
             return 0
         if rainfall_mm < 7.5:
@@ -196,6 +240,8 @@ class RiskAssessmentService:
         Returns:
             int: Risk score 0-100.
         """
+        if rainfall_mm is None:
+            return None
         if duration_hours <= 0:
             duration_hours = 1
         rate_mm_per_hour = rainfall_mm / duration_hours
@@ -235,6 +281,9 @@ class RiskAssessmentService:
         """
         if not is_coastal:
             return 0
+
+        if wind_speed_kmh is None or pressure_hpa is None:
+            return None
 
         score = 0
         # Wind contribution
@@ -282,12 +331,14 @@ class RiskAssessmentService:
         total_weight = 0.0
         weighted_sum = 0.0
         for factor, score in individual_risks.items():
+            if score is None:
+                continue
             w = weights.get(factor, 0.1)
             weighted_sum += score * w
             total_weight += w
 
         if total_weight == 0:
-            return 0
+            return None
         return round(weighted_sum / total_weight)
 
     def get_risk_level(self, score):
@@ -322,7 +373,7 @@ class RiskAssessmentService:
         recs = []
 
         if risk_level == 'Low':
-            recs.append('No significant weather hazards at this time.')
+            recs.append('No elevated hazards in the available current weather measurements.')
             recs.append('Stay updated with the latest weather forecasts.')
             return recs
 
@@ -330,7 +381,7 @@ class RiskAssessmentService:
             recs.append('Monitor official weather updates frequently.')
 
         # Wind-specific
-        wind = risk_factors.get('wind', 0)
+        wind = risk_factors.get('wind') or 0
         if wind >= 70:
             recs.append('Seek sturdy shelter immediately. Avoid being outdoors.')
             recs.append('Secure or bring indoors any loose objects that could become projectiles.')
@@ -339,8 +390,8 @@ class RiskAssessmentService:
             recs.append('Avoid driving high-profile vehicles.')
 
         # Rainfall / flood
-        rainfall = risk_factors.get('rainfall', 0)
-        flood = risk_factors.get('flood', 0)
+        rainfall = risk_factors.get('rainfall') or 0
+        flood = risk_factors.get('flood') or 0
         if rainfall >= 60 or flood >= 60:
             recs.append('Avoid low-lying areas and waterlogged roads.')
             recs.append('Keep an emergency kit ready with food, water, and medicines.')
@@ -349,7 +400,7 @@ class RiskAssessmentService:
             recs.append('Carry rain protection; localised waterlogging possible.')
 
         # Storm surge
-        surge = risk_factors.get('storm_surge', 0)
+        surge = risk_factors.get('storm_surge') or 0
         if surge >= 50:
             recs.append('If in a coastal area, move to higher ground immediately.')
             recs.append('Follow evacuation orders from local authorities.')
@@ -357,7 +408,7 @@ class RiskAssessmentService:
             recs.append('Coastal residents should remain alert for storm surge advisories.')
 
         # Cyclone proximity
-        cyc = risk_factors.get('cyclone_proximity', 0)
+        cyc = risk_factors.get('cyclone_proximity') or 0
         if cyc >= 70:
             recs.append('A tropical cyclone is nearby. Follow all official evacuation orders.')
             recs.append('Stock up on essentials; power outages are likely.')

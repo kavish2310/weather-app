@@ -455,6 +455,81 @@ class TestRiskEndpoints(unittest.TestCase):
         response = self.client.get('/api/risk/assessment')
         self.assertIn(response.status_code, [400, 422])
 
+    def test_assessment_returns_live_open_meteo_values_and_checked_empty_cyclone_feed(self):
+        weather = {
+            'city': 'Mumbai',
+            'lat': 19.076,
+            'lon': 72.8777,
+            'temperature': 29.8,
+            'wind_speed': 2.4,
+            'wind_speed_unit': 'km/h',
+            'rainfall': 0,
+            'pressure': 1014.1,
+            'humidity': 68,
+            'visibility': 10000,
+            'source': 'Open-Meteo (live model data)',
+            'observed_at': '2026-11-06T12:00:00Z',
+        }
+        with patch('Backend.routes.risk_routes.weather_service.get_current_weather', return_value=weather), \
+             patch('Backend.routes.risk_routes.cyclone_service.get_active_cyclones', return_value={
+                 'cyclones': [], 'status': 200
+             }):
+            response = self.client.get('/api/risk/assessment?city=Mumbai')
+
+        self.assertEqual(response.status_code, 200)
+        assessment = response.get_json()['data']
+        self.assertEqual(assessment['overall_score'], 0)
+        self.assertEqual(assessment['weather_summary']['wind_speed_kmh'], 2.4)
+        self.assertEqual(assessment['weather_summary']['rainfall_mm'], 0)
+        self.assertEqual(assessment['individual_risks']['wind'], 0)
+        self.assertEqual(assessment['individual_risks']['rainfall'], 0)
+        self.assertEqual(assessment['individual_risks']['flood'], 0)
+        self.assertEqual(assessment['individual_risks']['storm_surge'], 0)
+        self.assertEqual(assessment['individual_risks']['cyclone_proximity'], 0)
+        self.assertEqual(assessment['cyclone_feed_status'], 'available')
+        self.assertEqual(assessment['data_source'], 'Open-Meteo (live model data)')
+
+    def test_nearest_active_cyclone_is_used_for_proximity_score(self):
+        weather = {
+            'city': 'Mumbai',
+            'lat': 19.076,
+            'lon': 72.8777,
+            'wind_speed': 2.4,
+            'wind_speed_unit': 'km/h',
+            'rainfall': 0,
+            'pressure': 1014.1,
+            'source': 'Open-Meteo (live model data)',
+        }
+        cyclones = [
+            {'identifier': 'far', 'lat': 5.0, 'lon': 80.0},
+            {'identifier': 'near', 'lat': 19.5, 'lon': 72.9},
+        ]
+        with patch('Backend.routes.risk_routes.weather_service.get_current_weather', return_value=weather), \
+             patch('Backend.routes.risk_routes.cyclone_service.get_active_cyclones', return_value={
+                 'cyclones': cyclones, 'status': 200
+             }):
+            response = self.client.get('/api/risk/assessment?city=Mumbai')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.get_json()['data']['individual_risks']['cyclone_proximity'],
+            95
+        )
+
+    def test_missing_weather_measurements_are_not_reported_as_zero(self):
+        from Backend.services.risk_service import RiskAssessmentService
+
+        assessment = RiskAssessmentService().assess_risk(
+            'Indore',
+            {'source': 'Unknown provider', 'wind_speed': 10, 'rainfall': None}
+        )
+
+        self.assertIsNone(assessment['overall_score'])
+        self.assertIsNone(assessment['individual_risks']['wind'])
+        self.assertIsNone(assessment['individual_risks']['rainfall'])
+        self.assertIsNone(assessment['individual_risks']['flood'])
+        self.assertEqual(assessment['risk_level'], 'Unavailable')
+
 
 class TestSettingsEndpoints(unittest.TestCase):
     """Test settings endpoints."""
