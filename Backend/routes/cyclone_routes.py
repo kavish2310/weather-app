@@ -5,10 +5,12 @@ Cyclone API endpoints for active tracking, tracks, affected regions, arrival est
 from flask import Blueprint, request, jsonify
 
 from Backend.services.cyclone_service import CycloneService
+from Backend.services.risk_service import RiskAssessmentService
 from Backend.models import Cyclone
 
 cyclone_bp = Blueprint('cyclones', __name__, url_prefix='/api/cyclones')
 cyclone_service = CycloneService()
+risk_service = RiskAssessmentService()
 
 
 @cyclone_bp.route('/active', methods=['GET'])
@@ -18,7 +20,54 @@ def get_active():
     Returns real active cyclone data or clear 'No active cyclones reported' status.
     """
     result = cyclone_service.get_active_cyclones()
+    for cyclone in result.get('cyclones', []):
+        wind_speed = cyclone.get('max_wind_speed')
+        try:
+            cyclone['wind_intensity_index'] = (
+                risk_service.calculate_wind_risk(float(wind_speed))
+                if wind_speed is not None
+                else None
+            )
+        except (TypeError, ValueError):
+            cyclone['wind_intensity_index'] = None
     return jsonify(result), result.get('status', 200)
+
+
+@cyclone_bp.route('/outlook', methods=['GET'])
+def get_development_outlook():
+    """Get NHC's official tropical-cyclone formation outlooks."""
+    result = cyclone_service.get_development_outlook()
+    return jsonify(result), result.get('status', 200)
+
+
+@cyclone_bp.route('/forecast', methods=['GET'])
+def get_official_forecast():
+    """Get the official NHC forecast track for an active NHC storm."""
+    storm_name = request.args.get('name', '').strip()
+    if not storm_name:
+        return jsonify({'error': 'name query parameter is required', 'status': 400}), 400
+    result = cyclone_service.get_official_forecast(storm_name)
+    if 'error' in result:
+        return jsonify(result), result.get('status', 503)
+    return jsonify(result), 200
+
+
+@cyclone_bp.route('/environment', methods=['GET'])
+def get_cyclone_environment():
+    """Get model-based weather and marine readings for a storm position."""
+    lat = request.args.get('lat')
+    lon = request.args.get('lon')
+    if lat is None or lon is None:
+        return jsonify({'error': 'lat and lon query parameters are required', 'status': 400}), 400
+    try:
+        latitude = float(lat)
+        longitude = float(lon)
+    except ValueError:
+        return jsonify({'error': 'lat and lon must be numeric', 'status': 400}), 400
+    if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+        return jsonify({'error': 'Coordinates are outside valid latitude/longitude ranges', 'status': 400}), 400
+    result = cyclone_service.get_cyclone_environment(latitude, longitude)
+    return jsonify(result), result.get('status', 503)
 
 
 @cyclone_bp.route('/track/<int:cyclone_id>', methods=['GET'])

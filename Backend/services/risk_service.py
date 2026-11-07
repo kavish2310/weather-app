@@ -60,8 +60,14 @@ class RiskAssessmentService:
         source = weather_data.get('source') or 'Weather provider (source not reported)'
         wind_unit = (weather_data.get('wind_speed_unit') or '').lower()
         wind_speed_kmh = (
-            wind_speed if wind_unit in ('km/h', 'kmh', 'kph') or 'open-meteo' in source.lower()
+            wind_speed if wind_unit in ('km/h', 'kmh', 'kph')
             else wind_speed * 3.6 if wind_unit in ('m/s', 'mps') or 'openweathermap' in source.lower()
+            else None
+        )
+        wind_gust = numeric_value(weather_data.get('wind_gust'))
+        wind_gust_kmh = (
+            wind_gust * 3.6 if wind_gust is not None and wind_unit in ('m/s', 'mps')
+            else wind_gust if wind_gust is not None and wind_unit in ('km/h', 'kmh', 'kph')
             else None
         )
 
@@ -141,6 +147,8 @@ class RiskAssessmentService:
         return {
             'city': city,
             'country': weather_data.get('country'),
+            'location_type': weather_data.get('location_type'),
+            'location_precision': weather_data.get('location_precision'),
             'overall_score': overall_score,
             'risk_level': risk_level,
             'individual_risks': individual_risks,
@@ -149,11 +157,13 @@ class RiskAssessmentService:
             'is_coastal': is_coastal,
             'weather_summary': {
                 'wind_speed_kmh': round(wind_speed_kmh, 1) if wind_speed_kmh is not None else None,
+                'wind_gust_kmh': round(wind_gust_kmh, 1) if wind_gust_kmh is not None else None,
                 'rainfall_mm': rainfall,
                 'pressure_hpa': pressure,
                 'humidity_pct': humidity,
                 'visibility_m': visibility,
                 'temperature_c': temperature,
+                'weather_condition': weather_data.get('weather_description'),
             },
             'data_source': source,
             'observed_at': weather_data.get('observed_at'),

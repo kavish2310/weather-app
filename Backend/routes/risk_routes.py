@@ -58,7 +58,7 @@ def get_risk_assessment():
         relevant_cyclone = {'feed_checked': True, 'no_active_cyclones': True}
 
     assessment = risk_service.assess_risk(
-        city=city_name.strip(),
+        city=weather_data.get('city') or city_name.strip(),
         weather_data=weather_data,
         cyclone_data=relevant_cyclone
     )

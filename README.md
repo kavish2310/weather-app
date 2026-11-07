@@ -64,8 +64,9 @@ This project demonstrates full-stack development skills including Python backend
 
 ### 🌀 Cyclone Monitoring
 - Real-time active cyclone tracking
-- Interactive map with cyclone paths
-- Forecast track visualization
+- Official NHC formation outlooks and forecast tracks (Atlantic, Eastern Pacific, and Central Pacific)
+- Interactive map with NASA GIBS/NOAA GOES infrared satellite layers and reported cyclone movement
+- Open-Meteo wind, cloud, wave, sea-level-height, and sea-surface-temperature model samples at the storm position
 - Estimated arrival calculator
 - Historical cyclone database
 - Official warnings from IMD/NOAA
@@ -100,8 +101,8 @@ This project demonstrates full-stack development skills including Python backend
 | **Backend** | Python 3.10+, Flask 3.0, Flask-CORS, Flask-SQLAlchemy |
 | **Database** | SQLite (dev), PostgreSQL-ready via SQLAlchemy ORM |
 | **Data Science** | Pandas, NumPy, scikit-learn |
-| **APIs** | Open-Meteo Weather, Geocoding & Air Quality; NOAA NHC; JTWC; IMD |
-| **Mapping** | Leaflet.js with OpenStreetMap tiles (no API key required) |
+| **APIs** | Open-Meteo Weather, Marine, Geocoding & Air Quality; NOAA NHC; JTWC; IMD; NASA GIBS |
+| **Mapping** | Leaflet.js with OpenStreetMap, Esri imagery, and NASA GIBS/NOAA GOES infrared layers |
 
 ---
 
@@ -280,6 +281,9 @@ Vercel's filesystem is ephemeral. Without `DATABASE_URL`, the app uses a writabl
 | Method | Endpoint | Description | Parameters |
 |--------|----------|-------------|------------|
 | GET | `/api/cyclones/active` | Active cyclones | — |
+| GET | `/api/cyclones/outlook` | NHC tropical cyclone formation chances and outlook areas | — |
+| GET | `/api/cyclones/forecast` | Official NHC forecast track for an active NHC storm | `name` |
+| GET | `/api/cyclones/environment` | Weather and marine model readings at a cyclone position | `lat`, `lon` |
 | GET | `/api/cyclones/track/<id>` | Cyclone track | — |
 | GET | `/api/cyclones/affected-regions/<id>` | Affected regions | — |
 | GET | `/api/cyclones/arrival` | Arrival estimate | `cyclone_id`, `lat`, `lon` |
@@ -365,7 +369,7 @@ The database is designed with SQLAlchemy ORM, making it portable from SQLite to 
 ## ⚠️ Known Limitations
 
 1. **Live feed availability**: public weather and cyclone feeds may be temporarily unavailable; endpoints report errors instead of claiming fabricated data is live
-2. **Cyclone Data**: Real-time cyclone data depends on NOAA/IMD feed availability; data may be delayed
+2. **Cyclone Data**: Active-system data depends on official feed availability. NHC formation outlooks cover the Atlantic and eastern/central Pacific, not every global basin; forecast tracks are shown only when the NHC publishes one. Open-Meteo ocean and weather values are model outputs, not buoy/tide-gauge observations, and GOES imagery is near-real-time only where satellite coverage exists.
 3. **ML Predictions**: Require sufficient historical data (50+ observations) for reliable predictions
 4. **Historical Data**: Limited to data collected by the application; no pre-loaded historical dataset
 5. **Offline Mode**: Application requires internet connectivity for API data

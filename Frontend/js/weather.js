@@ -3,37 +3,190 @@
  */
 
 let comparisonCities = ['Indore', 'Mumbai', 'New Delhi'];
+let weatherRequestId = 0;
+
+function weatherCacheKey(city) {
+  return `weatheriq_current_weather_${city.trim().toLowerCase()}`;
+}
+
+function getCachedWeather(city) {
+  try {
+    const cached = JSON.parse(localStorage.getItem(weatherCacheKey(city)) || 'null');
+    return cached && cached.data && typeof cached.data === 'object' ? cached : null;
+  } catch (error) {
+    console.warn('Could not read saved weather data:', error.message);
+    return null;
+  }
+}
+
+function saveCachedWeather(city, data) {
+  try {
+    localStorage.setItem(weatherCacheKey(city), JSON.stringify({
+      data,
+      savedAt: Date.now()
+    }));
+  } catch (error) {
+    console.warn('Could not save weather data for offline display:', error.message);
+  }
+}
+
+function setWeatherDetailsState(value) {
+  [
+    'detailHumidity', 'detailWind', 'detailWindDir', 'detailPressure',
+    'detailVisibility', 'detailClouds', 'detailSunrise', 'detailSunset',
+    'detailDewPoint', 'detailUV'
+  ].forEach(id => {
+    const element = document.getElementById(id);
+    if (element) element.textContent = value;
+  });
+}
+
+function getForecastItems(forecastData) {
+  if (!forecastData) return [];
+  const primary = Array.isArray(forecastData.forecast)
+    ? forecastData.forecast.filter(item => item && typeof item === 'object')
+    : [];
+  if (primary.length) return primary;
+  return Array.isArray(forecastData.forecasts)
+    ? forecastData.forecasts.filter(item => item && typeof item === 'object')
+    : [];
+}
+
+function forecastCacheKey(city) {
+  return `weatheriq_forecast_${city.trim().toLowerCase()}`;
+}
+
+function loadCachedForecast(city) {
+  try {
+    const cached = JSON.parse(localStorage.getItem(forecastCacheKey(city)) || 'null');
+    return cached && Array.isArray(cached.forecast) && cached.forecast.length ? cached : null;
+  } catch (error) {
+    console.warn('Could not read saved forecast data:', error.message);
+    return null;
+  }
+}
+
+function saveCachedForecast(city, forecastData) {
+  const forecast = getForecastItems(forecastData);
+  if (!forecast.length) return false;
+  try {
+    localStorage.setItem(forecastCacheKey(city), JSON.stringify({
+      forecast,
+      source: forecastData.source || null,
+      savedAt: Date.now()
+    }));
+    return true;
+  } catch (error) {
+    console.warn('Could not save forecast data for offline display:', error.message);
+    return false;
+  }
+}
+
+function setForecastLoadingState() {
+  const hourly = document.getElementById('hourlyForecast');
+  const daily = document.getElementById('dailyForecast');
+  if (hourly) hourly.innerHTML = '<div class="empty-state">Loading hourly forecast...</div>';
+  if (daily) daily.innerHTML = '<div class="empty-state">Loading 5-day forecast...</div>';
+}
 
 async function loadWeatherPage(cityName) {
   const city = cityName || window.weatherApp.currentCity || 'Indore';
+  const requestId = ++weatherRequestId;
   const subtitle = document.getElementById('weatherPageCity');
-  if (subtitle) subtitle.textContent = `High-precision telemetry and multiday forecast for ${city}`;
+  const cached = getCachedWeather(city);
+  const cachedForecast = loadCachedForecast(city);
+  if (cachedForecast) {
+    renderHourlyCards(cachedForecast);
+    renderDailyForecast(cachedForecast);
+  } else {
+    setForecastLoadingState();
+  }
+  const cachedTime = cached && cached.data.observed_at
+    ? window.weatherApp.formatDateTime(cached.data.observed_at)
+    : 'time unknown';
+  if (cached) {
+    renderWeatherDetails(cached.data);
+    if (subtitle) {
+      subtitle.textContent = `Saved reading from ${cachedTime} · Updating live data...`;
+    }
+  } else {
+    if (subtitle) subtitle.textContent = `Loading live weather for ${city}...`;
+    const icon = document.getElementById('weatherIconLg');
+    if (icon) icon.textContent = '...';
+    const temperature = document.getElementById('currentTemp');
+    if (temperature) temperature.textContent = 'Loading...';
+    const condition = document.getElementById('currentCondition');
+    if (condition) condition.textContent = 'Loading live conditions...';
+    const feelsLike = document.getElementById('feelsLike');
+    if (feelsLike) feelsLike.textContent = `Loading conditions for ${city}...`;
+    setWeatherDetailsState('Loading...');
+  }
+
+  const currentWeatherRequest = window.weatherApp
+    .fetchAPI(`/weather/current?city=${encodeURIComponent(city)}`)
+    .then(data => ({ data }))
+    .catch(error => ({ error }));
+  const forecastRequest = window.weatherApp
+    .fetchAPI(`/weather/forecast?city=${encodeURIComponent(city)}&days=5`)
+    .then(data => ({ data }))
+    .catch(error => ({ error }));
 
   try {
-    const res = await window.weatherApp.fetchAPI(`/weather/current?city=${encodeURIComponent(city)}`);
-    if (res && res.data) {
-      renderWeatherDetails(res.data);
-      if (subtitle) {
-        subtitle.textContent = `Live weather for ${res.data.city} · Data: ${res.data.source || 'unknown source'}`;
-      }
+    const result = await currentWeatherRequest;
+    if (requestId !== weatherRequestId) return;
+    if (result.error) throw result.error;
+    const res = result.data;
+    if (!res || !res.data) throw new Error('The weather service returned no current conditions.');
+    renderWeatherDetails(res.data);
+    saveCachedWeather(city, res.data);
+    if (subtitle) {
+      subtitle.textContent = `Live weather for ${res.data.city} · Data: ${res.data.source || 'unknown source'}`;
     }
   } catch (err) {
+    if (requestId !== weatherRequestId) return;
     console.error('Weather page error:', err);
-    if (subtitle) subtitle.textContent = `Live weather unavailable: ${err.message}`;
+    if (cached) {
+      if (subtitle) {
+        subtitle.textContent = `Showing saved reading from ${cachedTime}; live update failed: ${err.message}`;
+      }
+    } else {
+      setWeatherDetailsState('Unavailable');
+      const temperature = document.getElementById('currentTemp');
+      if (temperature) temperature.textContent = 'Unavailable';
+      const icon = document.getElementById('weatherIconLg');
+      if (icon) icon.textContent = '--';
+      const condition = document.getElementById('currentCondition');
+      if (condition) condition.textContent = 'Weather unavailable';
+      const feelsLike = document.getElementById('feelsLike');
+      if (feelsLike) feelsLike.textContent = 'Live conditions could not be loaded';
+      if (subtitle) subtitle.textContent = `Live weather unavailable: ${err.message}`;
+    }
   }
 
   try {
-    const fRes = await window.weatherApp.fetchAPI(`/weather/forecast?city=${encodeURIComponent(city)}&days=5`);
-    if (fRes && fRes.data) {
-      renderHourlyCards(fRes.data);
-      renderDailyForecast(fRes.data);
+    const result = await forecastRequest;
+    if (requestId !== weatherRequestId) return;
+    if (result.error) throw result.error;
+    const fRes = result.data;
+    if (!fRes || !fRes.data) throw new Error('The forecast service returned no forecast data.');
+    if (!getForecastItems(fRes.data).length) {
+      throw new Error('The forecast service returned no forecast periods.');
     }
+    renderHourlyCards(fRes.data);
+    renderDailyForecast(fRes.data);
+    saveCachedForecast(city, fRes.data);
   } catch (err) {
+    if (requestId !== weatherRequestId) return;
     console.error('Forecast fetch error:', err);
     const hourly = document.getElementById('hourlyForecast');
     const daily = document.getElementById('dailyForecast');
-    if (hourly) hourly.innerHTML = `<div class="empty-state">Forecast unavailable: ${err.message}</div>`;
-    if (daily) daily.innerHTML = `<div class="empty-state">Forecast unavailable: ${err.message}</div>`;
+    const message = cachedForecast
+      ? `Live forecast unavailable; showing saved forecast. ${err.message}`
+      : `Forecast unavailable: ${err.message}`;
+    if (!cachedForecast) {
+      if (hourly) hourly.innerHTML = `<div class="empty-state">${message}</div>`;
+      if (daily) daily.innerHTML = `<div class="empty-state">${message}</div>`;
+    }
   }
 
   loadComparison();
@@ -100,16 +253,18 @@ function renderHourlyCards(forecastData) {
   const container = document.getElementById('hourlyForecast') || document.getElementById('hourlyScroll');
   if (!container) return;
 
-  const items = (forecastData.forecast || forecastData.forecasts || []).slice(0, 12);
+  const items = getForecastItems(forecastData).slice(0, 12);
   if (!items.length) {
     container.innerHTML = '<div class="empty-state">No hourly data available</div>';
     return;
   }
 
   container.innerHTML = items.map(item => {
-    const dt = new Date(item.dt_txt || item.forecast_dt);
-    const timeStr = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const dayStr = dt.toLocaleDateString([], { weekday: 'short' });
+    const rawDate = item.dt_txt || item.forecast_dt;
+    const dt = rawDate ? new Date(rawDate) : null;
+    const hasDate = dt && !Number.isNaN(dt.getTime());
+    const timeStr = hasDate ? dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Time unavailable';
+    const dayStr = hasDate ? dt.toLocaleDateString([], { weekday: 'short' }) : '--';
     const icon = window.weatherApp.getWeatherIcon(item.weather_icon);
     const temp = window.weatherApp.formatTemperature(item.temperature);
 
@@ -132,23 +287,28 @@ function renderDailyForecast(forecastData) {
   const container = document.getElementById('dailyForecast') || document.getElementById('dailyForecastList');
   if (!container) return;
 
-  const items = forecastData.forecast || forecastData.forecasts || [];
+  const items = getForecastItems(forecastData);
   const days = {};
   items.forEach(i => {
     const rawDt = i.dt_txt || i.forecast_dt || '';
     const d = rawDt.split('T')[0].split(' ')[0];
+    if (!d || Number.isNaN(new Date(d).getTime())) return;
     if (!days[d]) days[d] = [];
     days[d].push(i);
   });
 
   const dayKeys = Object.keys(days).slice(0, 5);
+  if (!dayKeys.length) {
+    container.innerHTML = '<div class="empty-state">No 5-day forecast data is currently available.</div>';
+    return;
+  }
   container.innerHTML = dayKeys.map(dateKey => {
     const dayItems = days[dateKey];
     const dt = new Date(dateKey);
     const dayName = dt.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-    const temps = dayItems.map(x => x.temperature);
-    const minTemp = Math.min(...temps);
-    const maxTemp = Math.max(...temps);
+    const temps = dayItems.map(x => Number(x.temperature)).filter(Number.isFinite);
+    const minTemp = temps.length ? Math.min(...temps) : null;
+    const maxTemp = temps.length ? Math.max(...temps) : null;
     const midItem = dayItems[Math.floor(dayItems.length / 2)] || dayItems[0];
     const icon = window.weatherApp.getWeatherIcon(midItem.weather_icon);
 

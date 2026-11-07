@@ -4,8 +4,10 @@ Tests for Weather Intelligence & Cyclone Monitoring System
 import os
 import sys
 import json
+import io
 import tempfile
 import unittest
+import zipfile
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
@@ -123,6 +125,74 @@ class TestWeatherEndpoints(unittest.TestCase):
         """Test search without query returns error."""
         response = self.client.get('/api/weather/search')
         self.assertIn(response.status_code, [400, 422])
+
+    def test_weather_geocoder_falls_back_to_state_centroid(self):
+        """A misspelled state name resolves to a clearly identified region center."""
+        from Backend.services.weather_service import WeatherService
+
+        def fake_request(url, params=None, **kwargs):
+            if 'geocoding-api' in url:
+                return {'results': []}
+            return {
+                'features': [{
+                    'properties': {
+                        'name': 'Chhattisgarh',
+                        'countrycode': 'IN',
+                        'type': 'state',
+                    },
+                    'geometry': {'coordinates': [81.8406351, 21.6637359]},
+                }]
+            }
+
+        with patch(
+            'Backend.services.weather_service.safe_api_request',
+            side_effect=fake_request
+        ):
+            location = WeatherService()._resolve_coords('chhatisgarh')
+
+        self.assertEqual(location['name'], 'Chhattisgarh')
+        self.assertEqual(location['country'], 'IN')
+        self.assertEqual(location['location_type'], 'state')
+        self.assertEqual(location['location_precision'], 'administrative-area reference point')
+        self.assertAlmostEqual(location['lat'], 21.6637359)
+        self.assertAlmostEqual(location['lon'], 81.8406351)
+
+    def test_exact_state_match_wins_over_same_named_city_in_another_region(self):
+        """A search like Texas must resolve the state, not an unrelated same-named town."""
+        from Backend.services.weather_service import WeatherService
+
+        def fake_request(url, params=None, **kwargs):
+            if 'photon.komoot.io' in url:
+                return {
+                    'features': [{
+                        'properties': {
+                            'name': 'Texas',
+                            'countrycode': 'US',
+                            'country': 'United States',
+                            'type': 'state',
+                        },
+                        'geometry': {'coordinates': [-98.5456, 31.2639]},
+                    }]
+                }
+            return {'results': [{
+                'name': 'Texas',
+                'country_code': 'MX',
+                'admin1': 'Hidalgo',
+                'latitude': 20.02556,
+                'longitude': -99.19556,
+            }]}
+
+        with patch(
+            'Backend.services.weather_service.safe_api_request',
+            side_effect=fake_request
+        ):
+            location = WeatherService()._resolve_coords('Texas')
+
+        self.assertEqual(location['name'], 'Texas')
+        self.assertEqual(location['country'], 'US')
+        self.assertEqual(location['location_type'], 'state')
+        self.assertAlmostEqual(location['lat'], 31.2639)
+        self.assertAlmostEqual(location['lon'], -98.5456)
 
 
 class TestAnalyticsTimeseriesEndpoint(unittest.TestCase):
@@ -381,6 +451,157 @@ class TestCycloneEndpoints(unittest.TestCase):
             response = self.client.get('/api/cyclones/active')
         self.assertEqual(response.status_code, 200)
 
+    def test_outlook_endpoint_returns_official_development_chances(self):
+        result = {
+            'systems': [{
+                'basin': 'Atlantic',
+                'region': 'Western Atlantic (AL94)',
+                'formation_chance_48h_pct': 10,
+                'formation_chance_7d_pct': 20,
+            }],
+            'sources': [{'basin': 'Atlantic', 'status': 'available'}],
+            'checked_at': '2026-11-07T05:30:00Z',
+            'status': 200,
+        }
+        with patch(
+            'Backend.routes.cyclone_routes.cyclone_service.get_development_outlook',
+            return_value=result
+        ):
+            response = self.client.get('/api/cyclones/outlook')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.get_json()['systems'][0]['formation_chance_48h_pct'], 10
+        )
+
+    def test_outlook_parser_reads_system_and_probabilities(self):
+        from Backend.services.cyclone_service import CycloneService
+
+        report = """For the North Atlantic...
+Western and Central Atlantic (AL94):
+A low pressure area several hundred miles south of Bermuda could develop.
+* Formation chance through 48 hours...low...10 percent.
+* Formation chance through 7 days...medium...30 percent.
+&&
+"""
+        systems = CycloneService._parse_outlook_systems(report, 'Atlantic')
+
+        self.assertEqual(len(systems), 1)
+        self.assertEqual(systems[0]['region'], 'Western and Central Atlantic (AL94)')
+        self.assertEqual(systems[0]['formation_chance_48h_pct'], 10)
+        self.assertEqual(systems[0]['formation_chance_7d_pct'], 30)
+
+    def test_outlook_parser_uses_reported_region_heading_without_system_id(self):
+        from Backend.services.cyclone_service import CycloneService
+
+        report = """For the eastern North Pacific:
+Eastern East Pacific:
+A disturbance is producing showers.
+* Formation chance through 48 hours...low...20 percent.
+* Formation chance through 7 days...low...20 percent.
+&&
+"""
+        systems = CycloneService._parse_outlook_systems(report, 'Eastern Pacific')
+
+        self.assertEqual(systems[0]['region'], 'Eastern East Pacific')
+
+    def test_official_track_parser_reads_forecast_line_and_points(self):
+        from Backend.services.cyclone_service import CycloneService
+
+        kml = b"""<kml xmlns="http://www.opengis.net/kml/2.1"><Document>
+<Placemark><description>120 Hour Forecast Track</description><LineString>
+<coordinates>-151.1,11.2,0 -152.7,11.4,0 -154.7,11.3,0</coordinates>
+</LineString></Placemark>
+<Placemark><description>24 hr Forecast Valid at: 2:00 PM HST
+Maximum Wind: 55 knots</description><Point><coordinates>-154.7,11.3,0</coordinates>
+</Point></Placemark></Document></kml>"""
+        archive_buffer = io.BytesIO()
+        with zipfile.ZipFile(archive_buffer, 'w') as archive:
+            archive.writestr('forecast.kml', kml)
+
+        result = CycloneService._parse_nhc_forecast_kmz(archive_buffer.getvalue())
+
+        self.assertEqual(result['horizon_hours'], 120)
+        self.assertEqual(result['coordinates'], [[11.2, -151.1], [11.4, -152.7], [11.3, -154.7]])
+        self.assertEqual(result['forecast_points'][0]['maximum_wind_knots'], 55)
+
+    def test_official_forecast_matches_feed_name_with_storm_id_and_alias(self):
+        from Backend.services.cyclone_service import CycloneService
+
+        service = CycloneService()
+        with patch(
+            'Backend.services.cyclone_service.safe_api_request',
+            return_value={
+                'activeStorms': [{
+                    'name': 'Pena',
+                    'id': 'cp042026',
+                    'forecastTrack': {
+                        'kmzFile': 'https://www.nhc.noaa.gov/storm_graphics/pena.kmz',
+                        'issuance': '2026-11-07T03:00:00Z',
+                    },
+                }]
+            }
+        ), patch('Backend.services.cyclone_service.requests.get') as get_track, patch.object(
+            service,
+            '_parse_nhc_forecast_kmz',
+            return_value={
+                'coordinates': [[11.2, -151.1], [11.4, -152.7]],
+                'forecast_points': [],
+                'horizon_hours': 120,
+            }
+        ):
+            get_track.return_value.content = b'KMZ'
+            result = service.get_official_forecast('TROPICAL STORM 04C (PENA)')
+
+        self.assertEqual(result['storm_name'], 'Pena')
+        self.assertEqual(result['horizon_hours'], 120)
+
+    def test_environment_endpoint_validates_coordinates(self):
+        response = self.client.get('/api/cyclones/environment?lat=91&lon=0')
+        self.assertEqual(response.status_code, 400)
+
+    def test_forecast_endpoint_requires_a_storm_name(self):
+        response = self.client.get('/api/cyclones/forecast')
+        self.assertEqual(response.status_code, 400)
+
+    def test_environment_endpoint_returns_model_conditions(self):
+        result = {
+            'weather': {'wind_speed_10m': 20, 'cloud_cover': 65},
+            'marine': {'sea_level_height_msl': 0.3, 'wave_height': 1.8},
+            'status': 200,
+        }
+        with patch(
+            'Backend.routes.cyclone_routes.cyclone_service.get_cyclone_environment',
+            return_value=result
+        ) as get_environment:
+            response = self.client.get('/api/cyclones/environment?lat=19&lon=144')
+
+        self.assertEqual(response.status_code, 200)
+        get_environment.assert_called_once_with(19.0, 144.0)
+        self.assertEqual(response.get_json()['marine']['wave_height'], 1.8)
+
+    def test_active_cyclones_endpoint_adds_wind_hazard_index_only_when_wind_is_reported(self):
+        """The cyclone-only risk view gets a model index without fabricating missing wind."""
+        feed = {
+            'cyclones': [
+                {'name': 'Storm A', 'max_wind_speed': 72.0},
+                {'name': 'Storm B', 'max_wind_speed': None},
+            ],
+            'count': 2,
+            'sources_checked': ['JTWC'],
+            'status': 200,
+        }
+        with patch(
+            'Backend.routes.cyclone_routes.cyclone_service.get_active_cyclones',
+            return_value=feed
+        ):
+            response = self.client.get('/api/cyclones/active')
+
+        self.assertEqual(response.status_code, 200)
+        cyclones = response.get_json()['cyclones']
+        self.assertEqual(cyclones[0]['wind_intensity_index'], 50)
+        self.assertIsNone(cyclones[1]['wind_intensity_index'])
+
     def test_active_cyclone_feed_includes_check_time_and_source_status(self):
         from Backend.services.cyclone_service import CycloneService
 
@@ -548,6 +769,24 @@ class TestRiskEndpoints(unittest.TestCase):
         self.assertIsNone(assessment['individual_risks']['rainfall'])
         self.assertIsNone(assessment['individual_risks']['flood'])
         self.assertEqual(assessment['risk_level'], 'Unavailable')
+
+    def test_open_meteo_wind_speed_is_converted_from_meters_per_second(self):
+        from Backend.services.risk_service import RiskAssessmentService
+
+        assessment = RiskAssessmentService().assess_risk(
+            'Indore',
+            {
+                'wind_speed': 10,
+                'wind_gust': 15,
+                'wind_speed_unit': 'm/s',
+                'rainfall': 0,
+                'source': 'Open-Meteo (live model data)',
+            }
+        )
+
+        self.assertEqual(assessment['weather_summary']['wind_speed_kmh'], 36.0)
+        self.assertEqual(assessment['weather_summary']['wind_gust_kmh'], 54.0)
+        self.assertEqual(assessment['individual_risks']['wind'], 15)
 
     def test_storm_surge_is_not_reported_as_zero_for_unlisted_locations(self):
         from Backend.services.risk_service import RiskAssessmentService

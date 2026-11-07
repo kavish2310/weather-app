@@ -8,7 +8,101 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;450;500;600;700&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="../css/styles.css">
+  <style>
+    .risk-dashboard { --risk-ink:#17243a; --risk-muted:#718096; --risk-line:#e4eaf2; --risk-surface:#f7f9fc; }
+    .risk-dashboard .risk-heading { display:flex; justify-content:space-between; align-items:flex-end; gap:20px; margin-bottom:18px; }
+    .risk-dashboard .risk-heading .page-title { margin-bottom:6px; }
+    .risk-dashboard .risk-heading .page-subtitle { margin:0; }
+    .risk-dashboard .risk-actions { display:flex; gap:8px; align-items:center; }
+    .risk-dashboard .risk-actions input { min-width:220px; }
+    .risk-dashboard .risk-view-tabs { display:flex; gap:8px; margin:0 0 18px; border-bottom:1px solid var(--risk-line); }
+    .risk-dashboard .risk-view-tab { padding:10px 15px; border:0; border-bottom:3px solid transparent; background:transparent; color:var(--risk-muted); font-weight:700; }
+    .risk-dashboard .risk-view-tab[aria-selected="true"] { border-bottom-color:#2563eb; color:#1d4ed8; }
+    .risk-dashboard .risk-cyclone-map { min-height:380px; height:clamp(380px,55vh,560px); border-radius:0 0 18px 18px; }
+    .risk-dashboard .risk-cyclone-index { display:flex; min-height:250px; flex-direction:column; align-items:center; justify-content:center; text-align:center; background:radial-gradient(circle at 50% 0%, #fff1f2 0, #fff 62%); }
+    .risk-dashboard .risk-cyclone-index-note { max-width:290px; margin:10px 0 0; color:var(--risk-muted); font-size:12px; line-height:1.55; }
+    .risk-dashboard .risk-cyclone-stat-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+    .risk-dashboard .risk-cyclone-stat { min-width:0; padding:14px; border:1px solid var(--risk-line); border-radius:13px; background:var(--risk-surface); }
+    .risk-dashboard .risk-cyclone-stat-label { color:var(--risk-muted); font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+    .risk-dashboard .risk-cyclone-stat-value { overflow-wrap:anywhere; margin-top:7px; color:var(--risk-ink); font-size:18px; font-weight:750; }
+    .risk-dashboard .risk-cyclone-selection { display:flex; gap:8px; align-items:center; }
+    .risk-dashboard .risk-cyclone-selection select { max-width:340px; }
+    .risk-dashboard .risk-cyclone-selection-help { color:var(--risk-muted); font-size:11px; }
+    .risk-dashboard .risk-cyclone-status { color:var(--risk-muted); font-size:12px; }
+    .risk-dashboard .risk-map-help { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; padding:14px 18px; border-bottom:1px solid var(--risk-line); background:#f8fafc; color:var(--risk-muted); font-size:11px; line-height:1.5; }
+    .risk-dashboard .risk-map-help strong { display:block; margin-bottom:3px; color:var(--risk-ink); font-size:12px; }
+    .risk-dashboard .risk-cyclone-feed-note { padding:12px 14px; border-radius:12px; background:#fff7ed; color:#9a3412; font-size:12px; line-height:1.55; }
+    .risk-dashboard .risk-live-strip { display:flex; align-items:center; gap:10px; padding:12px 16px; margin-bottom:18px; border:1px solid var(--risk-line); border-radius:14px; background:#fff; color:var(--risk-muted); font-size:12px; }
+    .risk-dashboard .risk-live-strip strong { color:var(--risk-ink); }
+    .risk-dashboard .risk-live-dot { width:9px; height:9px; flex:none; border-radius:50%; background:#94a3b8; }
+    .risk-dashboard .risk-live-dot.is-live { background:#10b981; box-shadow:0 0 0 4px #d1fae5; }
+    .risk-dashboard .risk-live-dot.is-error { background:#ef4444; box-shadow:0 0 0 4px #fee2e2; }
+    .risk-dashboard .risk-live-meta { margin-left:auto; text-align:right; }
+    .risk-dashboard .risk-panel { height:100%; overflow:hidden; border:1px solid var(--risk-line); border-radius:18px; background:#fff; box-shadow:0 8px 28px rgba(34,53,84,.06); }
+    .risk-dashboard .risk-panel-head { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:17px 20px; border-bottom:1px solid var(--risk-line); }
+    .risk-dashboard .risk-panel-head h2 { margin:0; color:var(--risk-ink); font-size:15px; font-weight:700; }
+    .risk-dashboard .risk-panel-body { padding:18px 20px; }
+    .risk-dashboard .risk-overview { display:flex; min-height:270px; flex-direction:column; align-items:center; justify-content:center; text-align:center; background:radial-gradient(circle at 50% 0%, #eff6ff 0, #fff 62%); }
+    .risk-dashboard .risk-overline { color:#64748b; font-size:11px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; }
+    .risk-dashboard .risk-gauge { display:grid; width:150px; height:150px; margin:15px 0 12px; place-items:center; border-radius:50%; background:conic-gradient(var(--gauge-color,#10b981) var(--gauge-angle,0deg), #e9eef5 0); transition:background .5s ease; }
+    .risk-dashboard .risk-gauge-inner { display:flex; width:128px; height:128px; flex-direction:column; align-items:center; justify-content:center; border-radius:50%; background:#fff; box-shadow:inset 0 0 0 1px #edf1f6; }
+    .risk-dashboard .risk-gauge-score { color:var(--risk-ink); font-size:48px; font-weight:800; letter-spacing:-.06em; line-height:1; }
+    .risk-dashboard .risk-gauge-scale { margin-top:5px; color:var(--risk-muted); font-size:11px; }
+    .risk-dashboard .risk-state-pill { display:inline-flex; align-items:center; gap:6px; padding:6px 11px; border-radius:999px; background:#ecfdf5; color:#047857; font-size:11px; font-weight:800; letter-spacing:.04em; }
+    .risk-dashboard .risk-explainer { max-width:290px; margin:12px 0 0; color:var(--risk-muted); font-size:12px; line-height:1.55; }
+    .risk-dashboard .risk-weather-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; }
+    .risk-dashboard .risk-weather-item { min-width:0; padding:13px 12px; border:1px solid var(--risk-line); border-radius:13px; background:var(--risk-surface); }
+    .risk-dashboard .risk-weather-label { color:var(--risk-muted); font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+    .risk-dashboard .risk-weather-value { overflow-wrap:anywhere; margin-top:7px; color:var(--risk-ink); font-size:17px; font-weight:750; }
+    .risk-dashboard .risk-weather-unit { color:#64748b; font-size:11px; font-weight:500; }
+    .risk-dashboard .risk-source-note { margin:15px 0 0; color:var(--risk-muted); font-size:11px; line-height:1.55; }
+    .risk-dashboard .risk-hazard-list { display:grid; gap:0; }
+    .risk-dashboard .risk-hazard { padding:16px 0; border-bottom:1px solid #edf1f6; }
+    .risk-dashboard .risk-hazard:last-child { padding-bottom:0; border-bottom:0; }
+    .risk-dashboard .risk-hazard-top { display:flex; justify-content:space-between; align-items:center; gap:14px; }
+    .risk-dashboard .risk-hazard-title { display:flex; min-width:0; align-items:center; gap:9px; color:var(--risk-ink); font-size:13px; font-weight:700; }
+    .risk-dashboard .risk-hazard-icon { display:grid; width:32px; height:32px; flex:none; place-items:center; border-radius:10px; background:#f1f5f9; font-size:16px; }
+    .risk-dashboard .risk-hazard-score { display:flex; align-items:center; gap:8px; white-space:nowrap; color:var(--risk-ink); font-size:13px; font-weight:800; }
+    .risk-dashboard .risk-level-chip { padding:4px 8px; border-radius:999px; background:#ecfdf5; color:#047857; font-size:9px; font-weight:800; letter-spacing:.06em; }
+    .risk-dashboard .risk-level-chip[data-level="moderate"] { background:#fffbeb; color:#a16207; }
+    .risk-dashboard .risk-level-chip[data-level="high"] { background:#fff7ed; color:#c2410c; }
+    .risk-dashboard .risk-level-chip[data-level="extreme"] { background:#fef2f2; color:#b91c1c; }
+    .risk-dashboard .risk-level-chip[data-level="unavailable"],
+    .risk-dashboard .risk-level-chip[data-level="not-assessed"] { background:#f1f5f9; color:#64748b; }
+    .risk-dashboard .risk-hazard-observation { margin:7px 0 9px 41px; color:var(--risk-muted); font-size:11px; line-height:1.5; }
+    .risk-dashboard .risk-progress { position:relative; height:8px; margin-left:41px; overflow:visible; border-radius:99px; background:#edf1f6; }
+    .risk-dashboard .risk-progress-fill { height:100%; width:0; border-radius:inherit; background:var(--bar-color,#2563eb); transition:width .65s cubic-bezier(.2,.8,.2,1); }
+    .risk-dashboard .risk-progress-marker { position:absolute; top:50%; left:var(--risk-marker-position,0%); width:12px; height:12px; transform:translate(-50%,-50%); border:2px solid #fff; border-radius:50%; background:var(--bar-color,#2563eb); box-shadow:0 0 0 1px var(--bar-color,#2563eb); transition:left .65s cubic-bezier(.2,.8,.2,1); }
+    .risk-dashboard .risk-progress[data-state="unavailable"] .risk-progress-marker,
+    .risk-dashboard .risk-progress[data-state="not-assessed"] .risk-progress-marker { display:none; }
+    .risk-dashboard .risk-lower-card { min-height:100%; }
+    .risk-dashboard .risk-note { padding:14px 15px; border:1px solid #dbeafe; border-radius:12px; background:#f8fbff; color:#475569; font-size:12px; line-height:1.6; }
+    .risk-dashboard .risk-loading { opacity:.62; pointer-events:none; }
+    .risk-dashboard #riskFactorsCount { padding:4px 9px; border-radius:999px; background:#f1f5f9; color:#475569; font-size:10px; font-weight:700; }
+    .risk-dashboard .risk-factor { padding:8px 0; border-bottom:1px solid #edf1f6; }
+    .risk-dashboard .risk-factor:last-child { border-bottom:0; }
+    @media (max-width:900px) { .risk-dashboard .risk-weather-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+    @media (max-width:640px) {
+      .risk-dashboard .risk-heading { align-items:stretch; flex-direction:column; }
+      .risk-dashboard .risk-actions { width:100%; }
+      .risk-dashboard .risk-actions input { min-width:0; flex:1; }
+      .risk-dashboard .risk-view-tab { flex:1; padding:9px 5px; font-size:12px; }
+      .risk-dashboard .risk-cyclone-selection { align-items:stretch; flex-direction:column; }
+      .risk-dashboard .risk-cyclone-selection select { max-width:none; }
+      .risk-dashboard .risk-map-help { grid-template-columns:1fr; gap:8px; }
+      .risk-dashboard .risk-weather-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .risk-dashboard .risk-live-strip { align-items:flex-start; flex-wrap:wrap; }
+      .risk-dashboard .risk-live-meta { width:100%; margin-left:19px; text-align:left; }
+      .risk-dashboard .risk-panel-head,.risk-dashboard .risk-panel-body { padding-right:15px; padding-left:15px; }
+      .risk-dashboard .risk-hazard-title { font-size:12px; }
+      .risk-dashboard .risk-level-chip { display:none; }
+    }
+    @media (prefers-reduced-motion:reduce) {
+      .risk-dashboard .risk-gauge,.risk-dashboard .risk-progress-fill,.risk-dashboard .risk-progress-marker { transition:none; }
+    }
+  </style>
 </head>
 <body>
   <div class="app-wrapper">
@@ -50,144 +144,241 @@
         </div>
       </header>
 
-      <div class="page-content">
-        <div class="page-header d-flex justify-between align-center flex-wrap gap-2">
+      <div class="page-content risk-dashboard" id="riskDashboard">
+        <div class="risk-heading">
           <div>
-            <h1 class="page-title">Disaster Risk & Multi-Hazard Assessment</h1>
-            <p class="page-subtitle" id="riskCityHeader">Assessing environmental vulnerability and vulnerability indices</p>
+            <h1 class="page-title">Disaster Risk Assessment</h1>
+            <p class="page-subtitle" id="riskCityHeader">Connecting to live weather data...</p>
           </div>
-          <div class="d-flex gap-2">
-            <input type="text" id="riskCityInput" class="form-control form-control-sm" placeholder="Enter city name..." style="max-width:200px;">
-            <button class="btn btn-sm btn-primary" id="runRiskAssessmentBtn">Assess City</button>
+          <div class="risk-actions" id="riskCityActions">
+            <input type="text" id="riskCityInput" class="form-control form-control-sm" placeholder="City, country (e.g. Pune, India)" aria-label="City and country">
+            <button class="btn btn-sm btn-primary" id="runRiskAssessmentBtn">Assess location</button>
+            <button class="btn btn-sm btn-secondary" id="refreshRiskBtn" title="Refresh live risk data" aria-label="Refresh live risk data">↻</button>
           </div>
         </div>
 
-        <!-- Overall Risk Summary -->
-        <div class="row g-4 mb-4">
-          <div class="col-lg-4">
-            <div class="card h-100 text-center d-flex flex-column justify-content-center align-items-center p-4">
-              <span class="card-meta" style="font-weight:600; text-transform:uppercase; letter-spacing:1px;">Composite Risk Index</span>
-              <div style="font-size: 5rem; font-weight: 800; line-height: 1.1; margin: 12px 0;" id="riskScore">--</div>
-              <span class="badge" id="riskLevelBadge" style="font-size: 14px; padding: 6px 16px;">Analyzing...</span>
-              <div class="text-muted mt-3" style="font-size: 12px;">Scale: 0 (Calm) to 100 (Extreme Hazard)</div>
-              <div class="text-muted mt-2" id="riskDataContext" style="font-size: 11px;">Loading live weather and cyclone feeds...</div>
-              <div class="text-muted mt-2" id="riskWeatherSummary" style="font-size: 12px; line-height: 1.6;">Loading current weather measurements...</div>
+        <div class="risk-view-tabs" role="tablist" aria-label="Risk assessment views">
+          <button class="risk-view-tab" id="weatherRiskTab" type="button" role="tab" aria-selected="true" aria-controls="weatherRiskView">Weather &amp; multi-hazard</button>
+          <button class="risk-view-tab" id="cycloneRiskTab" type="button" role="tab" aria-selected="false" aria-controls="cycloneRiskView">Live cyclone tracker</button>
+        </div>
+
+        <section id="cycloneRiskView" role="tabpanel" aria-labelledby="cycloneRiskTab" hidden>
+          <div class="risk-panel mb-4">
+            <div class="risk-panel-head flex-wrap">
+              <div>
+                <h2>Official live cyclone feed</h2>
+                <span class="risk-source-note">Search a reported storm by name or identifier. Only active systems returned by official feeds can be selected.</span>
+              </div>
+              <div class="risk-cyclone-selection">
+                <input type="search" class="form-control form-control-sm" id="cycloneSearchInput" placeholder="Cyclone name or ID" aria-label="Search active cyclones">
+                <button class="btn btn-sm btn-primary" type="button" id="searchCycloneBtn">Search live storms</button>
+                <button class="btn btn-sm btn-secondary" type="button" id="refreshCycloneRiskBtn" aria-label="Refresh official cyclone feeds">↻</button>
+              </div>
+              <select class="form-select form-select-sm" id="riskCycloneSelect" aria-label="Select an active cyclone">
+                <option value="">Loading official cyclone feed...</option>
+              </select>
+              <span class="risk-cyclone-selection-help">Choose a storm to update its map, forecast, and readings.</span>
+            </div>
+            <div class="risk-panel-body">
+              <div class="risk-live-strip" role="status" aria-live="polite">
+                <span class="risk-live-dot" id="cycloneRiskLiveDot"></span>
+                <strong id="cycloneRiskLiveStatus">Checking official cyclone feeds...</strong>
+                <span id="cycloneRiskFeedContext">Current storm positions are not forecasts.</span>
+                <span class="risk-live-meta" id="cycloneRiskCheckedAt">Feed check pending</span>
+              </div>
+              <section class="risk-panel mb-4" aria-labelledby="cycloneOutlookTitle">
+                <div class="risk-panel-head">
+                  <div>
+                    <h2 id="cycloneOutlookTitle">Official cyclone development outlook</h2>
+                    <span class="risk-source-note">NHC formation chances are outlooks, not guarantees or local impact probabilities. Coverage: Atlantic and eastern/central Pacific.</span>
+                  </div>
+                </div>
+                <div class="risk-panel-body">
+                  <div class="risk-cyclone-status mb-3" id="cycloneOutlookStatus" role="status">Loading NHC outlooks...</div>
+                  <div class="risk-cyclone-stat-grid" id="cycloneOutlookList" aria-live="polite"></div>
+                </div>
+              </section>
+              <div class="row g-4 mb-4">
+                <div class="col-xl-4 col-lg-5">
+                  <section class="risk-panel risk-cyclone-index h-100" aria-labelledby="cycloneIndexTitle">
+                    <span class="risk-overline" id="cycloneIndexTitle">Reported cyclone wind hazard</span>
+                    <div class="risk-gauge" id="cycloneWindIndexGauge" role="meter" aria-label="Cyclone wind-intensity index" aria-valuemin="0" aria-valuemax="100">
+                      <div class="risk-gauge-inner">
+                        <span class="risk-gauge-score" id="cycloneWindIndexScore">--</span>
+                        <span class="risk-gauge-scale">wind hazard index</span>
+                      </div>
+                    </div>
+                    <span class="risk-state-pill" id="cycloneWindIndexLevel">Waiting for live storm</span>
+                    <p class="risk-cyclone-index-note" id="cycloneWindIndexNote">No cyclone score is calculated until a live storm and reported maximum wind are selected. This index is not a probability.</p>
+                  </section>
+                </div>
+                <div class="col-xl-8 col-lg-7">
+                  <section class="risk-panel h-100" aria-labelledby="cycloneDetailsTitle">
+                    <div class="risk-panel-head">
+                      <h2 id="cycloneDetailsTitle">Selected storm telemetry</h2>
+                      <span class="risk-overline" id="cycloneSelectedSource">Official feed</span>
+                    </div>
+                    <div class="risk-panel-body">
+                      <h3 class="h5 mb-3" id="cycloneSelectedName">No storm selected</h3>
+                      <div class="risk-cyclone-stat-grid">
+                        <div class="risk-cyclone-stat"><div class="risk-cyclone-stat-label">Maximum sustained wind</div><div class="risk-cyclone-stat-value" id="cycloneSelectedWind">Unavailable</div></div>
+                        <div class="risk-cyclone-stat"><div class="risk-cyclone-stat-label">Storm category</div><div class="risk-cyclone-stat-value" id="cycloneSelectedCategory">Unavailable</div></div>
+                        <div class="risk-cyclone-stat"><div class="risk-cyclone-stat-label">Reported movement</div><div class="risk-cyclone-stat-value" id="cycloneSelectedMovement">Unavailable</div></div>
+                        <div class="risk-cyclone-stat"><div class="risk-cyclone-stat-label">Position</div><div class="risk-cyclone-stat-value" id="cycloneSelectedPosition">Unavailable</div></div>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </div>
+              <section class="risk-panel mb-4" aria-labelledby="cycloneEnvironmentTitle">
+                <div class="risk-panel-head">
+                  <div>
+                    <h2 id="cycloneEnvironmentTitle">Wind, cloud &amp; ocean conditions at storm position</h2>
+                    <span class="risk-source-note">Point readings from Open-Meteo weather and marine forecast models; not direct buoy or tide-gauge observations.</span>
+                  </div>
+                  <span class="risk-overline" id="cycloneEnvironmentUpdated">Waiting for storm coordinates</span>
+                </div>
+                <div class="risk-panel-body">
+                  <div class="risk-cyclone-status mb-3" id="cycloneEnvironmentStatus" role="status">Select a geolocated active storm to load model conditions.</div>
+                  <div class="risk-cyclone-stat-grid">
+                    <div class="risk-cyclone-stat"><div class="risk-cyclone-stat-label">Model wind / gust</div><div class="risk-cyclone-stat-value" id="cycloneEnvWind">Unavailable</div></div>
+                    <div class="risk-cyclone-stat"><div class="risk-cyclone-stat-label">Wind direction</div><div class="risk-cyclone-stat-value" id="cycloneEnvWindDirection">Unavailable</div></div>
+                    <div class="risk-cyclone-stat"><div class="risk-cyclone-stat-label">Cloud cover / humidity</div><div class="risk-cyclone-stat-value" id="cycloneEnvCloud">Unavailable</div></div>
+                    <div class="risk-cyclone-stat"><div class="risk-cyclone-stat-label">Sea-level height (model)</div><div class="risk-cyclone-stat-value" id="cycloneEnvSeaLevel">Unavailable</div></div>
+                    <div class="risk-cyclone-stat"><div class="risk-cyclone-stat-label">Wave height / direction</div><div class="risk-cyclone-stat-value" id="cycloneEnvWaves">Unavailable</div></div>
+                    <div class="risk-cyclone-stat"><div class="risk-cyclone-stat-label">Sea-surface temperature</div><div class="risk-cyclone-stat-value" id="cycloneEnvSst">Unavailable</div></div>
+                  </div>
+                </div>
+              </section>
+              <div class="risk-panel">
+                <div class="risk-panel-head">
+                  <div>
+                    <h2>Live cyclone wind &amp; motion tracker</h2>
+                    <span class="risk-source-note">The map opens with one clear background and the selected storm. Open map options only if you want satellite imagery or extra layers.</span>
+                  </div>
+                </div>
+                <div class="risk-map-help" aria-label="How to use the map">
+                  <div><strong>Default view</strong>Street map only, with the selected storm and its movement. Nothing is stacked over the map.</div>
+                  <div><strong>Optional map choices</strong>Use the layers button in the map's top-right corner to switch to satellite imagery or add a forecast/cloud layer.</div>
+                  <div><strong>Choose another storm</strong>Select a different storm above the map; its position and readings update automatically.</div>
+                </div>
+                <div id="riskCycloneMap" class="risk-cyclone-map" role="img" aria-label="Map of the selected cyclone's latest reported position and motion"></div>
+                <div class="risk-panel-body risk-cyclone-status" id="riskCycloneMapStatus">Waiting for a geolocated active cyclone.</div>
+                <div class="risk-panel-body risk-source-note">Esri satellite imagery is not a live feed. NASA/NOAA GOES infrared layers show near-real-time clouds where satellite coverage is available. Model readings are estimates at the storm location.</div>
+              </div>
+              <p class="risk-cyclone-feed-note mt-3 mb-0">The index summarizes the feed-reported maximum wind against the app's wind-hazard scale. It is not the chance of cyclone formation, landfall, or damage. Use official warnings and forecasts for decisions.</p>
             </div>
           </div>
+        </section>
 
-          <div class="col-lg-8">
-            <div class="card h-100">
-              <div class="card-header">
-                <span class="card-title"><span class="card-icon">📊</span> Multi-Vector Threat Breakdown</span>
-              </div>
-              <div class="p-3">
-                <!-- Wind Risk Bar -->
-                <div class="mb-3">
-                  <div class="d-flex justify-between mb-1" style="font-size:13px;">
-                    <span>💨 Wind Hazard Score</span>
-                    <strong id="windRiskVal">-- / 100</strong>
-                  </div>
-                  <div class="risk-data-detail" id="windRiskDetail">Loading live wind measurement...</div>
-                  <div class="progress" style="height:8px; background:#e5e7eb;">
-                    <div class="progress-bar bg-info" id="windRiskBar" style="width:0%;"></div>
-                  </div>
-                </div>
+        <div id="weatherRiskView" role="tabpanel" aria-labelledby="weatherRiskTab">
+        <div class="risk-live-strip" role="status" aria-live="polite">
+          <span class="risk-live-dot" id="riskLiveDot"></span>
+          <strong id="riskLiveStatus">Connecting to live providers</strong>
+          <span id="riskDataContext">Waiting for the first assessment...</span>
+          <span class="risk-live-meta" id="riskUpdatedAt">Live source and observation time will appear here</span>
+        </div>
 
-                <!-- Rain Risk Bar -->
-                <div class="mb-3">
-                  <div class="d-flex justify-between mb-1" style="font-size:13px;">
-                    <span>🌧️ Precipitation Intensity Score</span>
-                    <strong id="rainRiskVal">-- / 100</strong>
-                  </div>
-                  <div class="risk-data-detail" id="rainRiskDetail">Loading live precipitation measurement...</div>
-                  <div class="progress" style="height:8px; background:#e5e7eb;">
-                    <div class="progress-bar bg-primary" id="rainRiskBar" style="width:0%;"></div>
-                  </div>
-                </div>
-
-                <!-- Flood Risk Bar -->
-                <div class="mb-3">
-                  <div class="d-flex justify-between mb-1" style="font-size:13px;">
-                    <span>🌊 Pluvial / Flood Vulnerability Score</span>
-                    <strong id="floodRiskVal">-- / 100</strong>
-                  </div>
-                  <div class="risk-data-detail" id="floodRiskDetail">Loading precipitation input...</div>
-                  <div class="progress" style="height:8px; background:#e5e7eb;">
-                    <div class="progress-bar bg-warning" id="floodRiskBar" style="width:0%;"></div>
-                  </div>
-                </div>
-
-                <!-- Storm Surge Risk Bar -->
-                <div class="mb-1">
-                  <div class="d-flex justify-between mb-1" style="font-size:13px;">
-                    <span>⚓ Coastal Storm Surge Index</span>
-                    <strong id="surgeRiskVal">-- / 100</strong>
-                  </div>
-                  <div class="risk-data-detail" id="surgeRiskDetail">Loading coastal applicability...</div>
-                  <div class="progress" style="height:8px; background:#e5e7eb;">
-                    <div class="progress-bar bg-danger" id="surgeRiskBar" style="width:0%;"></div>
-                  </div>
-                </div>
-
-                <div class="mt-3">
-                  <div class="d-flex justify-between mb-1" style="font-size:13px;">
-                    <span>🌀 Cyclone Proximity Score</span>
-                    <strong id="cycloneRiskVal">-- / 100</strong>
-                  </div>
-                  <div class="risk-data-detail" id="cycloneRiskDetail">Checking official cyclone feeds...</div>
-                  <div class="progress" style="height:8px; background:#e5e7eb;">
-                    <div class="progress-bar bg-danger" id="cycloneRiskBar" style="width:0%;"></div>
-                  </div>
+        <div class="row g-4 mb-4">
+          <div class="col-xl-4 col-lg-5">
+            <section class="risk-panel risk-overview" aria-labelledby="riskOverviewTitle">
+              <span class="risk-overline" id="riskOverviewTitle">Overall current risk</span>
+              <div class="risk-gauge" id="riskGauge" role="meter" aria-label="Composite risk score" aria-valuemin="0" aria-valuemax="100">
+                <div class="risk-gauge-inner">
+                  <span class="risk-gauge-score" id="riskScore">--</span>
+                  <span class="risk-gauge-scale">risk score</span>
                 </div>
               </div>
-            </div>
+              <span class="risk-state-pill" id="riskLevelBadge">Waiting for live data</span>
+              <p class="risk-explainer" id="riskOverviewMessage">The score will appear when a live weather assessment is received.</p>
+            </section>
+          </div>
+
+          <div class="col-xl-8 col-lg-7">
+            <section class="risk-panel h-100" aria-labelledby="riskWeatherTitle">
+              <div class="risk-panel-head">
+                <h2 id="riskWeatherTitle">Live conditions used in this assessment</h2>
+                <span class="risk-overline">Provider observations</span>
+              </div>
+              <div class="risk-panel-body">
+                <div class="risk-weather-grid">
+                  <div class="risk-weather-item"><div class="risk-weather-label">Temperature</div><div class="risk-weather-value" id="riskTempValue">--</div></div>
+                  <div class="risk-weather-item"><div class="risk-weather-label">Humidity</div><div class="risk-weather-value" id="riskHumidityValue">--</div></div>
+                  <div class="risk-weather-item"><div class="risk-weather-label">Wind</div><div class="risk-weather-value" id="riskWindValue">--</div></div>
+                  <div class="risk-weather-item"><div class="risk-weather-label">Precipitation</div><div class="risk-weather-value" id="riskRainValue">--</div></div>
+                  <div class="risk-weather-item"><div class="risk-weather-label">Pressure</div><div class="risk-weather-value" id="riskPressureValue">--</div></div>
+                </div>
+                <p class="risk-source-note" id="riskWeatherSummary">Live measurements appear here with their provider source and observation time.</p>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div class="row g-4 mb-4">
+          <div class="col-xl-8">
+            <section class="risk-panel" aria-labelledby="riskVectorTitle">
+              <div class="risk-panel-head">
+                <div>
+                  <h2 id="riskVectorTitle">Multi-hazard breakdown</h2>
+                  <span class="risk-source-note">Live weather readings are paired with simplified model scores. A 0% score means no model threshold was crossed; it is not missing data or a probability.</span>
+                </div>
+                <span class="risk-overline">Model score · not probability</span>
+              </div>
+              <div class="risk-panel-body risk-hazard-list">
+                <article class="risk-hazard" data-hazard="wind">
+                  <div class="risk-hazard-top"><div class="risk-hazard-title"><span class="risk-hazard-icon">💨</span>Wind hazard</div><div class="risk-hazard-score"><span id="windRiskVal">--%</span><span class="risk-level-chip" id="windRiskLevel" data-level="unavailable">WAITING</span></div></div>
+                  <div class="risk-hazard-observation" id="windRiskDetail">Waiting for live wind reading...</div>
+                  <div class="risk-progress" id="windRiskTrack" data-state="unavailable" role="meter" aria-label="Wind risk score" aria-valuemin="0" aria-valuemax="100"><div class="risk-progress-fill" id="windRiskBar"></div><span class="risk-progress-marker"></span></div>
+                </article>
+                <article class="risk-hazard" data-hazard="rainfall">
+                  <div class="risk-hazard-top"><div class="risk-hazard-title"><span class="risk-hazard-icon">🌧️</span>Precipitation intensity</div><div class="risk-hazard-score"><span id="rainRiskVal">--%</span><span class="risk-level-chip" id="rainRiskLevel" data-level="unavailable">WAITING</span></div></div>
+                  <div class="risk-hazard-observation" id="rainRiskDetail">Waiting for live precipitation reading...</div>
+                  <div class="risk-progress" id="rainRiskTrack" data-state="unavailable" role="meter" aria-label="Precipitation risk score" aria-valuemin="0" aria-valuemax="100"><div class="risk-progress-fill" id="rainRiskBar"></div><span class="risk-progress-marker"></span></div>
+                </article>
+                <article class="risk-hazard" data-hazard="flood">
+                  <div class="risk-hazard-top"><div class="risk-hazard-title"><span class="risk-hazard-icon">🌊</span>Rainfall-driven flood indicator</div><div class="risk-hazard-score"><span id="floodRiskVal">--%</span><span class="risk-level-chip" id="floodRiskLevel" data-level="unavailable">WAITING</span></div></div>
+                  <div class="risk-hazard-observation" id="floodRiskDetail">Waiting for live precipitation input...</div>
+                  <div class="risk-progress" id="floodRiskTrack" data-state="unavailable" role="meter" aria-label="Flood indicator score" aria-valuemin="0" aria-valuemax="100"><div class="risk-progress-fill" id="floodRiskBar"></div><span class="risk-progress-marker"></span></div>
+                </article>
+                <article class="risk-hazard" data-hazard="surge">
+                  <div class="risk-hazard-top"><div class="risk-hazard-title"><span class="risk-hazard-icon">⚓</span>Coastal storm-surge indicator</div><div class="risk-hazard-score"><span id="surgeRiskVal">--%</span><span class="risk-level-chip" id="surgeRiskLevel" data-level="unavailable">WAITING</span></div></div>
+                  <div class="risk-hazard-observation" id="surgeRiskDetail">Checking coastal applicability...</div>
+                  <div class="risk-progress" id="surgeRiskTrack" data-state="unavailable" role="meter" aria-label="Storm surge score" aria-valuemin="0" aria-valuemax="100"><div class="risk-progress-fill" id="surgeRiskBar"></div><span class="risk-progress-marker"></span></div>
+                </article>
+                <article class="risk-hazard" data-hazard="cyclone">
+                  <div class="risk-hazard-top"><div class="risk-hazard-title"><span class="risk-hazard-icon">🌀</span>Active cyclone proximity</div><div class="risk-hazard-score"><span id="cycloneRiskVal">--%</span><span class="risk-level-chip" id="cycloneRiskLevel" data-level="unavailable">WAITING</span></div></div>
+                  <div class="risk-hazard-observation" id="cycloneRiskDetail">Checking official cyclone feeds...</div>
+                  <div class="risk-progress" id="cycloneRiskTrack" data-state="unavailable" role="meter" aria-label="Cyclone proximity score" aria-valuemin="0" aria-valuemax="100"><div class="risk-progress-fill" id="cycloneRiskBar"></div><span class="risk-progress-marker"></span></div>
+                </article>
+              </div>
+            </section>
+          </div>
+
+          <div class="col-xl-4">
+            <section class="risk-panel risk-lower-card" aria-labelledby="riskRecommendationsTitle">
+              <div class="risk-panel-head"><h2 id="riskRecommendationsTitle">Recommended actions</h2><span aria-hidden="true">🛡️</span></div>
+              <div class="risk-panel-body" id="recommendationsList"><p class="risk-source-note">Recommendations will appear with the live assessment.</p></div>
+            </section>
           </div>
         </div>
 
         <div class="row g-4">
-          <!-- Scientific Rigor & Damage Statement -->
-          <div class="col-lg-6">
-            <div class="card h-100">
-              <div class="card-header">
-                <span class="card-title"><span class="card-icon">🔬</span> Scientific Damage & Exposure Validation</span>
-              </div>
-              <div class="p-3">
-                <div class="alert alert-secondary mb-3" style="font-size:13px; line-height:1.6; background:#f8fafc; border-color:#dbe2ea;">
-                  <strong>Physical Damage Estimation:</strong><br>
-                  <span id="physicalDamageStatus" style="color:#92400e; font-weight:600;">
-                    Damage percentage unavailable — insufficient validated data.
-                  </span>
-                </div>
-                <div style="font-size:12px; color:var(--color-text-muted); line-height:1.7;">
-                  <strong>Scientific Methodology Note:</strong><br>
-                  In accordance with World Meteorological Organization (WMO) and National Disaster Management Authority (NDMA) standards, structural damage percentages cannot be fabricated without building-inventory micro-surveys, lidar elevation models, and calibrated hydrodynamic flood models.
-                </div>
-              </div>
-            </div>
+          <div class="col-lg-7">
+            <section class="risk-panel risk-lower-card" aria-labelledby="riskFactorsTitle">
+              <div class="risk-panel-head"><h2 id="riskFactorsTitle">Contributing hazards</h2><span id="riskFactorsCount">Awaiting assessment</span></div>
+              <div class="risk-panel-body" id="contributingFactorsList"><p class="risk-source-note">Elevated factors will be listed here. A clear result will be stated explicitly.</p></div>
+            </section>
           </div>
-
-          <!-- Precautionary Actions -->
-          <div class="col-lg-6">
-            <div class="card h-100">
-              <div class="card-header">
-                <span class="card-title"><span class="card-icon">🛡️</span> Recommended Precautionary Measures</span>
+          <div class="col-lg-5">
+            <section class="risk-panel risk-lower-card" aria-labelledby="riskMethodTitle">
+              <div class="risk-panel-head"><h2 id="riskMethodTitle">How to read this assessment</h2><span aria-hidden="true">ℹ️</span></div>
+              <div class="risk-panel-body">
+                <div class="risk-note"><strong>A score of 0 is a real result.</strong> It means the reported live conditions did not cross this model's elevated-risk thresholds; it does not mean data is missing.</div>
+                <p class="risk-source-note mt-3 mb-0">“Unavailable” means a required provider measurement was not returned. “Not assessed” means a hazard is not applicable here. This simplified weather assessment is not an official warning or a building-damage prediction.</p>
+                <div class="risk-source-note" id="physicalDamageStatus">Physical damage estimate: unavailable without validated local exposure and damage-model data.</div>
               </div>
-              <div class="p-3" id="recommendationsList">
-                <div class="text-muted" style="font-size:13px;">Loading safety measures...</div>
-              </div>
-            </div>
+            </section>
           </div>
-
-          <!-- Contributing Factors -->
-          <div class="col-12">
-            <div class="card">
-              <div class="card-header">
-                <span class="card-title"><span class="card-icon">📋</span> Contributing Environmental Factors & Exposed Basins</span>
-              </div>
-              <div class="p-3" id="contributingFactorsList">
-                <div class="text-muted" style="font-size:13px;">Analyzing atmospheric telemetry...</div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -197,6 +388,8 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <script src="../js/app.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="../js/map.js"></script>
   <script src="../js/risk.js"></script>
 </body>
 </html>

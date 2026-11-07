@@ -8,12 +8,17 @@ Stores cyclone metadata and track-point histories in the database.
 import logging
 import os
 import re
+import io
+import zipfile
+import html
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
+import requests
+
 from Backend.config import Config
 from Backend.models import db, Cyclone, CycloneTrackPoint
-from Backend.utils import safe_api_request, haversine_distance
+from Backend.utils import safe_api_request, haversine_distance, cache_response
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +29,14 @@ NHC_PACIFIC_FEED = 'https://www.nhc.noaa.gov/gis-ep.xml'
 IMD_FEED_URL = 'https://mausam.imd.gov.in/backend/rss_cyclone.xml'
 # JTWC data (public best-track / warning feed)
 JTWC_FEED_URL = 'https://www.metoc.navy.mil/jtwc/rss/jtwc.rss'
+NHC_CURRENT_STORMS_URL = 'https://www.nhc.noaa.gov/CurrentStorms.json'
+NHC_OUTLOOK_PRODUCTS = (
+    ('Atlantic', 'https://www.nhc.noaa.gov/text/MIATWOAT.shtml'),
+    ('Eastern Pacific', 'https://www.nhc.noaa.gov/text/MIATWOEP.shtml'),
+    ('Central Pacific', 'https://www.nhc.noaa.gov/text/HFOTWOCP.shtml'),
+)
+OPEN_METEO_CYCLONE_URL = 'https://api.open-meteo.com/v1/forecast'
+OPEN_METEO_MARINE_URL = 'https://marine-api.open-meteo.com/v1/marine'
 
 
 class CycloneService:
@@ -244,6 +257,283 @@ class CycloneService:
                 'and change speed. Always follow official meteorological advisories.'
             ),
             'status': 200,
+        }
+
+    @cache_response(timeout=300)
+    def get_development_outlook(self):
+        """Return official NHC tropical-cyclone development outlooks by basin."""
+        checked_at = datetime.now(timezone.utc).isoformat()
+        sources = []
+        systems = []
+        for basin, url in NHC_OUTLOOK_PRODUCTS:
+            try:
+                response = requests.get(url, timeout=12, headers={'User-Agent': 'WeatherIQ/2.0'})
+                response.raise_for_status()
+                report = self._clean_outlook_html(response.text)
+                basin_systems = self._parse_outlook_systems(report, basin)
+                sources.append({
+                    'basin': basin,
+                    'url': url,
+                    'status': 'available',
+                    'summary': 'Official NHC Tropical Weather Outlook',
+                })
+                systems.extend(basin_systems)
+            except requests.exceptions.RequestException as exc:
+                logger.warning('Failed to fetch NHC %s outlook: %s', basin, exc)
+                sources.append({
+                    'basin': basin,
+                    'url': url,
+                    'status': 'unavailable',
+                    'error': str(exc),
+                })
+
+        available = any(source['status'] == 'available' for source in sources)
+        return {
+            'systems': systems,
+            'sources': sources,
+            'coverage': 'NHC Atlantic, Eastern Pacific, and Central Pacific outlooks; not a global formation forecast.',
+            'checked_at': checked_at,
+            'status': 200 if available else 503,
+        }
+
+    @staticmethod
+    def _clean_outlook_html(source):
+        source = re.sub(r'(?is)<(script|style)\b.*?</\1>', ' ', source)
+        source = re.sub(r'(?i)<br\s*/?>|</(?:p|pre|tr|div|h[1-6])\s*>', '\n', source)
+        text = html.unescape(re.sub(r'<[^>]+>', ' ', source))
+        lines = [re.sub(r'\s+', ' ', line).strip() for line in text.splitlines()]
+        return '\n'.join(line for line in lines if line)
+
+    @staticmethod
+    def _parse_outlook_systems(report, basin):
+        systems = []
+        chance_pattern = re.compile(
+            r'\*\s*Formation chance through 48 hours\b',
+            re.IGNORECASE
+        )
+        for match in chance_pattern.finditer(report):
+            following = report[match.start():]
+            next_system = following.find('&&')
+            if next_system >= 0:
+                following = following[:next_system]
+            chance_48 = re.search(
+                r'Formation chance through 48 hours[^\n]*?(\d{1,3})\s*percent',
+                following,
+                re.IGNORECASE
+            )
+            chance_7 = re.search(
+                r'Formation chance through 7 days[^\n]*?(\d{1,3})\s*percent',
+                following,
+                re.IGNORECASE
+            )
+            if not chance_48:
+                continue
+            section_start = report.rfind('&&', 0, match.start()) + 2
+            section = report[section_start:match.start()]
+            headers = re.findall(r'(?m)^([^:\n]{2,100}):\s*$', section)
+            headers = [
+                header.strip() for header in headers
+                if not header.strip().lower().startswith(('for ', 'active systems'))
+            ]
+            region = headers[-1] if headers else f'{basin} disturbance'
+            if headers:
+                section = section.rsplit(headers[-1] + ':', 1)[-1]
+            description = re.sub(r'\s+', ' ', section).strip(' \n-*')
+            systems.append({
+                'basin': basin,
+                'region': region,
+                'description': description or 'See the official outlook for system details.',
+                'formation_chance_48h_pct': int(chance_48.group(1)),
+                'formation_chance_7d_pct': int(chance_7.group(1)) if chance_7 else None,
+                'source_url': next(url for name, url in NHC_OUTLOOK_PRODUCTS if name == basin),
+            })
+        return systems
+
+    @cache_response(timeout=180)
+    def get_official_forecast(self, storm_name):
+        """Fetch NHC's official forecast track for a currently active named storm."""
+        payload = safe_api_request(NHC_CURRENT_STORMS_URL, timeout=10)
+        if payload.get('error'):
+            return {'error': payload['error'], 'status': payload.get('status', 503)}
+        active_storms = payload.get('activeStorms', [])
+        target = str(storm_name or '').strip().casefold()
+        target_name = re.sub(
+            r'^(?:tropical|subtropical|post-tropical)\s+(?:storm|depression|cyclone)\s+|^(?:hurricane|typhoon|cyclone)\s+',
+            '',
+            target,
+            flags=re.IGNORECASE
+        ).strip()
+        parenthetical_name = re.search(r'\(([^)]+)\)\s*$', target_name)
+        name_candidates = {target, target_name}
+        if parenthetical_name:
+            name_candidates.add(parenthetical_name.group(1).strip().casefold())
+        storm = next(
+            (
+                item for item in active_storms
+                if str(item.get('name', '')).strip().casefold() in name_candidates
+            ),
+            None
+        )
+        if not storm:
+            return {
+                'error': 'No matching active storm with an NHC forecast track was found.',
+                'status': 404,
+            }
+        track_url = (storm.get('forecastTrack') or {}).get('kmzFile')
+        if not track_url:
+            return {
+                'error': 'The NHC feed does not provide an official forecast track for this storm.',
+                'status': 404,
+            }
+        try:
+            response = requests.get(track_url, timeout=15, headers={'User-Agent': 'WeatherIQ/2.0'})
+            response.raise_for_status()
+            track = self._parse_nhc_forecast_kmz(response.content)
+        except requests.exceptions.RequestException as exc:
+            logger.warning('Failed to fetch official NHC forecast for %s: %s', storm_name, exc)
+            return {'error': 'The official NHC forecast track is temporarily unavailable.', 'status': 503}
+        except (zipfile.BadZipFile, ET.ParseError, ValueError) as exc:
+            logger.warning('Invalid NHC forecast product for %s: %s', storm_name, exc)
+            return {'error': 'The official NHC forecast product could not be parsed.', 'status': 502}
+
+        if not track.get('coordinates'):
+            return {'error': 'No forecast coordinates were present in the official NHC product.', 'status': 502}
+        return {
+            'storm_name': storm.get('name'),
+            'identifier': storm.get('id'),
+            'issuance': (storm.get('forecastTrack') or {}).get('issuance'),
+            'source_url': track_url,
+            'coordinates': track['coordinates'],
+            'forecast_points': track['forecast_points'],
+            'horizon_hours': track['horizon_hours'],
+            'checked_at': datetime.now(timezone.utc).isoformat(),
+            'status': 200,
+        }
+
+    @staticmethod
+    def _parse_nhc_forecast_kmz(content):
+        archive = zipfile.ZipFile(io.BytesIO(content))
+        kml_name = next((name for name in archive.namelist() if name.lower().endswith('.kml')), None)
+        if not kml_name:
+            raise ValueError('KML document is missing')
+        root = ET.fromstring(archive.read(kml_name))
+        elements = lambda node, name: [
+            item for item in node.iter() if item.tag.rsplit('}', 1)[-1] == name
+        ]
+        coordinates = []
+        horizon_hours = 0
+        forecast_points = []
+        for placemark in elements(root, 'Placemark'):
+            description = ' '.join((item.text or '') for item in elements(placemark, 'description'))
+            description = html.unescape(re.sub(r'<[^>]+>', ' ', description))
+            raw_coordinates = [
+                (item.text or '').strip() for item in elements(placemark, 'coordinates')
+            ]
+            track_match = re.search(r'(\d+)\s*Hour Forecast Track', description, re.IGNORECASE)
+            if track_match and raw_coordinates:
+                horizon = int(track_match.group(1))
+                if horizon > horizon_hours:
+                    horizon_hours = horizon
+                    coordinates = CycloneService._parse_kml_coordinates(raw_coordinates[0])
+
+            point_match = re.search(r'(\d+)\s*hr Forecast', description, re.IGNORECASE)
+            if point_match and raw_coordinates:
+                point_coordinates = CycloneService._parse_kml_coordinates(raw_coordinates[0])
+                if point_coordinates:
+                    wind = re.search(r'Maximum Wind:\s*([\d.]+)\s*knots', description, re.IGNORECASE)
+                    valid_at = re.search(r'Valid at:\s*([^\r\n]+)', description, re.IGNORECASE)
+                    forecast_points.append({
+                        'hours': int(point_match.group(1)),
+                        'lat': point_coordinates[0][0],
+                        'lon': point_coordinates[0][1],
+                        'maximum_wind_knots': float(wind.group(1)) if wind else None,
+                        'valid_at': valid_at.group(1).strip() if valid_at else None,
+                    })
+        return {
+            'coordinates': coordinates,
+            'forecast_points': sorted(forecast_points, key=lambda point: point['hours']),
+            'horizon_hours': horizon_hours,
+        }
+
+    @staticmethod
+    def _parse_kml_coordinates(raw_coordinates):
+        coordinates = []
+        for item in raw_coordinates.split():
+            parts = item.split(',')
+            if len(parts) < 2:
+                continue
+            lon, lat = float(parts[0]), float(parts[1])
+            if -180 <= lon <= 180 and -90 <= lat <= 90:
+                coordinates.append([lat, lon])
+        return coordinates
+
+    @cache_response(timeout=300)
+    def get_cyclone_environment(self, lat, lon):
+        """Fetch model-based atmospheric and ocean conditions at cyclone coordinates."""
+        weather = safe_api_request(
+            OPEN_METEO_CYCLONE_URL,
+            params={
+                'latitude': lat,
+                'longitude': lon,
+                'current': (
+                    'temperature_2m,relative_humidity_2m,wind_speed_10m,'
+                    'wind_direction_10m,wind_gusts_10m,cloud_cover,pressure_msl'
+                ),
+            },
+            timeout=10,
+        )
+        marine = safe_api_request(
+            OPEN_METEO_MARINE_URL,
+            params={
+                'latitude': lat,
+                'longitude': lon,
+                'current': 'sea_level_height_msl,wave_height,wave_direction,sea_surface_temperature',
+            },
+            timeout=10,
+        )
+        weather_current = weather.get('current') if not weather.get('error') else None
+        marine_current = marine.get('current') if not marine.get('error') else None
+        weather_fields = (
+            'temperature_2m', 'relative_humidity_2m', 'wind_speed_10m',
+            'wind_direction_10m', 'wind_gusts_10m', 'cloud_cover', 'pressure_msl'
+        )
+        marine_fields = (
+            'sea_level_height_msl', 'wave_height', 'wave_direction',
+            'sea_surface_temperature'
+        )
+        if not weather_current or not any(weather_current.get(key) is not None for key in weather_fields):
+            weather_current = None
+        if not marine_current or not any(marine_current.get(key) is not None for key in marine_fields):
+            marine_current = None
+        return {
+            'coordinates': {'lat': lat, 'lon': lon},
+            'weather': weather_current,
+            'marine': marine_current,
+            'units': {
+                'temperature_2m': '°C',
+                'relative_humidity_2m': '%',
+                'wind_speed_10m': 'km/h',
+                'wind_gusts_10m': 'km/h',
+                'wind_direction_10m': '°',
+                'cloud_cover': '%',
+                'pressure_msl': 'hPa',
+                'sea_level_height_msl': 'm',
+                'wave_height': 'm',
+                'wave_direction': '°',
+                'sea_surface_temperature': '°C',
+            },
+            'sources': {
+                'weather': 'Open-Meteo weather forecast model',
+                'marine': 'Open-Meteo marine forecast model',
+            },
+            'checked_at': datetime.now(timezone.utc).isoformat(),
+            'status': 200 if weather_current or marine_current else 503,
+            'errors': {
+                key: value['error'] for key, value in (
+                    ('weather', weather),
+                    ('marine', marine),
+                ) if value.get('error')
+            },
         }
 
     # ------------------------------------------------------------------

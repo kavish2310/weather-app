@@ -53,13 +53,40 @@ class WeatherMap {
         attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics',
         maxZoom: 18
       }
-    ).addTo(map);
-    if (street) map.removeLayer(street);
+    );
+    const goesEastInfrared = L.tileLayer(
+      'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_Band13_Clean_Infrared/default/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png',
+      {
+        attribution: 'Satellite imagery &copy; NASA GIBS / NOAA GOES-East',
+        crossOrigin: true,
+        maxNativeZoom: 6,
+        maxZoom: 18,
+        opacity: 0.72
+      }
+    );
+    const goesWestInfrared = L.tileLayer(
+      'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-West_ABI_Band13_Clean_Infrared/default/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png',
+      {
+        attribution: 'Satellite imagery &copy; NASA GIBS / NOAA GOES-West',
+        crossOrigin: true,
+        maxNativeZoom: 6,
+        maxZoom: 18,
+        opacity: 0.72
+      }
+    );
+    if (street && !map.hasLayer(street)) street.addTo(map);
+    if (map.hasLayer(satellite)) map.removeLayer(satellite);
     this.layerControls[containerId] = L.control.layers(
-      { 'Satellite imagery': satellite, 'Street map': street },
-      {},
-      { collapsed: false, position: 'topright' }
+      { 'Plain street map (default)': street, 'Satellite imagery': satellite },
+      {
+        'Optional: GOES-East infrared cloud image': goesEastInfrared,
+        'Optional: GOES-West infrared cloud image': goesWestInfrared
+      },
+      { collapsed: true, position: 'topright' }
     ).addTo(map);
+    this.layerControls[containerId].getContainer().querySelector(
+      '.leaflet-control-layers-toggle'
+    ).setAttribute('aria-label', 'Open map options');
   }
 
   clearMap(containerId) {

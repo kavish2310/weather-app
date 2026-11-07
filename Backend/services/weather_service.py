@@ -3,6 +3,7 @@
 import math
 import logging
 import os
+from difflib import SequenceMatcher
 import requests
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
@@ -22,6 +23,7 @@ OPEN_METEO_URL = 'https://api.open-meteo.com/v1/forecast'
 OPEN_METEO_GEOCODING_URL = 'https://geocoding-api.open-meteo.com/v1/search'
 OPEN_METEO_AIR_QUALITY_URL = 'https://air-quality-api.open-meteo.com/v1/air-quality'
 OPEN_METEO_ARCHIVE_URL = 'https://archive-api.open-meteo.com/v1/archive'
+PHOTON_GEOCODING_URL = 'https://photon.komoot.io/api/'
 
 # Known coordinates lookup for reference
 KNOWN_CITIES = {
@@ -339,7 +341,14 @@ class WeatherService:
     # ------------------------------------------------------------------
 
     def _resolve_coords(self, city_name):
-        """Resolve a city to real coordinates; never invent coordinates."""
+        """Resolve a city or administrative area to real coordinates."""
+        photon_location = self._resolve_administrative_area(city_name)
+        if (
+            photon_location
+            and photon_location.get('location_precision') == 'administrative-area reference point'
+        ):
+            return photon_location
+
         response = safe_api_request(
             OPEN_METEO_GEOCODING_URL,
             params={'name': city_name, 'count': 1, 'language': 'en', 'format': 'json'}
@@ -351,6 +360,8 @@ class WeatherService:
             }
         results = response.get('results') or []
         if not results:
+            if photon_location:
+                return photon_location
             return {'error': f"No matching location found for '{city_name}'", 'status': 404}
 
         item = results[0]
@@ -360,6 +371,80 @@ class WeatherService:
             'lat': item.get('latitude'),
             'lon': item.get('longitude'),
             'timezone': item.get('timezone'),
+            'location_type': 'city',
+        }
+
+    def _resolve_administrative_area(self, query):
+        """Resolve an exact or slightly misspelled region before city geocoding."""
+        response = safe_api_request(
+            PHOTON_GEOCODING_URL,
+            params={'q': query, 'limit': 5, 'lang': 'en'},
+            timeout=8,
+            headers={'User-Agent': 'WeatherIQ/1.0 (weather risk dashboard)'},
+        )
+        if 'error' in response:
+            return None
+
+        query_name = query.split(',', 1)[0].strip().casefold()
+        administrative_types = {'state', 'province', 'region'}
+        place_types = {'city', 'town', 'village', 'locality'}
+        administrative_matches = []
+        place_matches = []
+        for feature in response.get('features') or []:
+            properties = feature.get('properties') or {}
+            location_type = (properties.get('type') or '').casefold()
+            name = properties.get('name')
+            coordinates = (feature.get('geometry') or {}).get('coordinates') or []
+            if not name or len(coordinates) < 2 or location_type not in administrative_types | place_types:
+                continue
+
+            similarity = SequenceMatcher(
+                None, query_name, str(name).strip().casefold()
+            ).ratio()
+            if similarity < 0.75:
+                continue
+            is_administrative_area = location_type in administrative_types
+            match = (similarity, properties, coordinates)
+            if is_administrative_area:
+                administrative_matches.append(match)
+            elif location_type in place_types:
+                place_matches.append(match)
+
+        administrative_matches.sort(key=lambda match: match[0], reverse=True)
+        place_matches.sort(key=lambda match: match[0], reverse=True)
+        area_match = administrative_matches[0] if administrative_matches else None
+        place_match = place_matches[0] if place_matches else None
+        if not area_match and not place_match:
+            return None
+
+        if area_match:
+            _, area_properties, _ = area_match
+            city_is_inside_matching_area = (
+                place_match
+                and query_name == str(place_match[1].get('name', '')).strip().casefold()
+                and str(place_match[1].get('state', '')).strip().casefold()
+                == str(area_properties.get('name', '')).strip().casefold()
+                and place_match[1].get('countrycode') == area_properties.get('countrycode')
+            )
+            if city_is_inside_matching_area:
+                _, properties, coordinates = place_match
+                is_administrative_area = False
+            else:
+                _, properties, coordinates = area_match
+                is_administrative_area = True
+        else:
+            _, properties, coordinates = place_match
+            is_administrative_area = False
+
+        country_code = properties.get('countrycode')
+        return {
+            'name': properties.get('name', query),
+            'country': country_code.upper() if country_code else None,
+            'lat': coordinates[1],
+            'lon': coordinates[0],
+            'timezone': 'auto',
+            'location_type': properties.get('type'),
+            'location_precision': 'administrative-area reference point' if is_administrative_area else 'place coordinates',
         }
 
     def _fetch_open_meteo(self, lat, lon, days=5):
@@ -429,6 +514,8 @@ class WeatherService:
             'country': location.get('country'),
             'lat': location['lat'],
             'lon': location['lon'],
+            'location_type': location.get('location_type', 'city'),
+            'location_precision': location.get('location_precision'),
             'temperature': current.get('temperature_2m'),
             'feels_like': current.get('apparent_temperature'),
             'temp_min': (daily.get('temperature_2m_min') or [None])[0],
@@ -441,7 +528,7 @@ class WeatherService:
             'wind_deg': wind_deg,
             'wind_direction': format_wind_direction(wind_deg),
             'rainfall': current.get('precipitation'),
-            'wind_speed_unit': 'km/h',
+            'wind_speed_unit': 'm/s',
             'clouds': cloud_cover,
             'visibility': current.get('visibility'),
             'uv_index': current.get('uv_index'),
